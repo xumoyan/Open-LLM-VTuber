@@ -43,10 +43,21 @@ cd mobile/android
 
 ## iOS
 
+真机私测可使用仅在 Debug 生效的 WebView ATS 例外：
+
+```bash
+export MOBILE_ACCESS_TOKEN='与服务器 .env 相同的值'
+cd mobile
+corepack pnpm run sync:ios-ip-test
+corepack pnpm run open:ios
+```
+
+在 Xcode 选择 `Debug` 和真机后运行。`Info-Debug.plist` 仅放开 Capacitor `WKWebView` 内的 HTTP/WS；Release 仍使用默认 ATS，不能连接纯 IP 的 HTTP/WS 服务。
+
+正式发布请改用受信任 TLS 域名，并以 `VITE_BACKEND_URL=https://api.example.com` 重新同步。
+
 ```bash
 cd mobile
 corepack pnpm run sync
 corepack pnpm run open:ios
 ```
-
-iOS release 不允许通过纯 IP 的 HTTP/WS 连接实时服务。iPhone 真机语音测试需要一个带受信任 TLS 证书的域名，并以 `VITE_BACKEND_URL=https://api.example.com` 重新同步；不要为省事把 ATS 全局关闭。

@@ -33,9 +33,11 @@ async def _authenticate_mobile_test_connection(
     try:
         payload = await asyncio.wait_for(websocket.receive_json(), timeout=10)
     except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect):
+        logger.warning("Mobile test WebSocket authentication failed: missing or invalid first frame")
         await websocket.close(code=4401)
         return False
     if not is_valid_mobile_access_token(payload, expected_token):
+        logger.warning("Mobile test WebSocket authentication failed: invalid access token")
         await websocket.close(code=4401)
         return False
     return True
