@@ -5,7 +5,7 @@
 > 前置结果：Qwen Audio Realtime 桌面链路已由用户验证可用  
 > 关联计划：[Qwen 实时语音接入计划](./2026-08-01-qwen-realtime-child-english-teacher-plan.md)；[儿童英语产品总计划](./2026-07-31-preschool-online-english-teacher-plan.md)
 
-当前测试标识：App 名称 `AI 外教`、iOS bundle ID/Android application ID `ai.english.tutor`、Android Debug 测试后端 `http://221.216.142.92:18080`。
+当前测试标识：App 名称 `AI 外教`、iOS bundle ID/Android application ID `ai.english.tutor`、Android Debug 测试后端 `http://221.216.142.92:18081`。
 
 ## 0. 结论
 
@@ -459,7 +459,7 @@ corepack pnpm run open:android
 1. App 显示名：`AI 外教`；
 2. iOS bundle ID：`ai.english.tutor`；
 3. Android application ID：`ai.english.tutor`；
-4. Android Debug 测试后端：`221.216.142.92:18080`。
+4. Android Debug 测试后端：`221.216.142.92:18081`。
 
 仍需确定：分发目标（仅自己安装、受邀家庭、TestFlight/Play 内测或公开商店）和正式 HTTPS/WSS 域名。纯 IP 只能用于 Android Debug 私测，不能作为 iOS 或 release 的实时服务地址。
 

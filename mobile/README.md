@@ -18,7 +18,7 @@ docker compose -f docker-compose.mobile-test.yml up -d --build
 docker compose -f docker-compose.mobile-test.yml logs -f
 ```
 
-Docker 公开 `221.216.142.92:18080`，但只有先发送 `MOBILE_ACCESS_TOKEN` 的客户端才能创建 Qwen 会话。该口令只适用于单设备私测，不能用于商店发布。
+Docker 公开 `221.216.142.92:18081`，但只有先发送 `MOBILE_ACCESS_TOKEN` 的客户端才能创建 Qwen 会话。该口令只适用于单设备私测，不能用于商店发布。
 
 ## Android 真机 IP 测试
 
@@ -29,7 +29,7 @@ corepack pnpm run sync:android-ip-test
 corepack pnpm run open:android
 ```
 
-`sync:android-ip-test` 只为 Debug 允许 `http/ws://221.216.142.92:18080`。不要用它构建 release。
+`sync:android-ip-test` 只为 Debug 允许 `http/ws://221.216.142.92:18081`。不要用它构建 release。
 
 构建调试 APK：
 

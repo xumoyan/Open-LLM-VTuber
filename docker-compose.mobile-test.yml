@@ -10,7 +10,7 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 12393
     ports:
-      - "18080:12393"
+      - "18081:12393"
     volumes:
       - ./conf.yaml:/app/conf/conf.yaml:ro
     restart: unless-stopped
