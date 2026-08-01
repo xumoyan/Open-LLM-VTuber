@@ -354,6 +354,12 @@ class QwenRealtimeSession:
             await self._on_upstream_error(event)
 
     async def _send_session_update(self) -> None:
+        turn_detection: dict[str, Any] = {"type": self.config.turn_detection}
+        if self.config.turn_detection == "server_vad":
+            turn_detection.update(
+                threshold=self.config.turn_detection_threshold,
+                silence_duration_ms=self.config.turn_detection_silence_ms,
+            )
         await self._send_upstream(
             "session.update",
             session={
@@ -362,7 +368,7 @@ class QwenRealtimeSession:
                 "voice": self.config.voice,
                 "input_audio_format": "pcm",
                 "output_audio_format": "pcm",
-                "turn_detection": {"type": self.config.turn_detection},
+                "turn_detection": turn_detection,
             },
         )
 

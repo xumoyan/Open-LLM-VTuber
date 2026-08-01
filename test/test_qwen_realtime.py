@@ -106,6 +106,24 @@ class QwenRealtimeSessionTest(unittest.IsolatedAsyncioTestCase):
             self.events,
         )
 
+    async def test_server_vad_is_tuned_for_short_child_answers(self):
+        self.session.config = RealtimeVoiceConfig(
+            turn_detection="server_vad",
+            turn_detection_threshold=0.25,
+            turn_detection_silence_ms=450,
+        )
+
+        await self.session._send_session_update()
+
+        self.assertEqual(
+            self.upstream.sent[-1]["session"]["turn_detection"],
+            {
+                "type": "server_vad",
+                "threshold": 0.25,
+                "silence_duration_ms": 450,
+            },
+        )
+
     async def test_cancelled_response_never_forwards_late_audio(self):
         self.session._ready.set()
         self.session._response_contexts["response-1"] = ("turn-1", 1)

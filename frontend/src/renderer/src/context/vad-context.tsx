@@ -247,6 +247,7 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
         positiveSpeechThreshold: settings.positiveSpeechThreshold / 100,
         negativeSpeechThreshold: settings.negativeSpeechThreshold / 100,
         redemptionFrames: settings.redemptionFrames,
+        minSpeechFrames: 4,
         baseAssetPath: './libs/',
         onnxWASMBasePath: './libs/',
         stream,

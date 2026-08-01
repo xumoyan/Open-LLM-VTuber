@@ -27,6 +27,12 @@ class RealtimeVoiceConfig(I18nMixin):
     turn_detection: Literal["smart_turn", "server_vad"] = Field(
         default="smart_turn", alias="turn_detection"
     )
+    turn_detection_threshold: float = Field(
+        default=0.25, ge=-1.0, le=1.0, alias="turn_detection_threshold"
+    )
+    turn_detection_silence_ms: int = Field(
+        default=450, ge=200, le=6000, alias="turn_detection_silence_ms"
+    )
 
     @field_validator("base_url")
     @classmethod
