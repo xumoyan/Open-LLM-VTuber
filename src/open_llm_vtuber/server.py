@@ -141,10 +141,16 @@ class WebSocketServer:
             name="web_tool",
         )
 
+        # During source-branch development Vite writes the web build here; the
+        # deployment submodule still exposes its files at frontend/ directly.
+        frontend_dir = os.path.join("frontend", "dist", "web")
+        if not os.path.isdir(frontend_dir):
+            frontend_dir = "frontend"
+
         # Mount main frontend last (as catch-all)
         self.app.mount(
             "/",
-            CORSStaticFiles(directory="frontend", html=True),
+            CORSStaticFiles(directory=frontend_dir, html=True),
             name="frontend",
         )
 

@@ -30,6 +30,7 @@ class AsyncLLM(StatelessLLMInterface):
         organization_id: str = "z",
         project_id: str = "z",
         temperature: float = 1.0,
+        reasoning_effort: str | None = None,
     ):
         """
         Initializes an instance of the `AsyncLLM` class.
@@ -45,6 +46,7 @@ class AsyncLLM(StatelessLLMInterface):
         self.base_url = base_url
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort or NOT_GIVEN
         self.client = AsyncOpenAI(
             base_url=base_url,
             organization=organization_id,
@@ -105,6 +107,7 @@ class AsyncLLM(StatelessLLMInterface):
                 stream=True,
                 temperature=self.temperature,
                 tools=available_tools,
+                reasoning_effort=self.reasoning_effort,
             )
             logger.debug(
                 f"Tool Support: {self.support_tools}, Available tools: {available_tools}"

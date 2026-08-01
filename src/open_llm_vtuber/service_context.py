@@ -23,6 +23,7 @@ from .tts.tts_factory import TTSFactory
 from .vad.vad_factory import VADFactory
 from .agent.agent_factory import AgentFactory
 from .translate.translate_factory import TranslateFactory
+from .realtime import QwenRealtimeSession, build_qwen_instructions
 
 from .config_manager import (
     Config,
@@ -54,6 +55,7 @@ class ServiceContext:
         # translate_engine can be none if translation is disabled
         self.vad_engine: VADInterface | None = None
         self.translate_engine: TranslateInterface | None = None
+        self.realtime_session: QwenRealtimeSession | None = None
 
         self.mcp_server_registery: ServerRegistry | None = None
         self.tool_adapter: ToolAdapter | None = None
@@ -72,21 +74,23 @@ class ServiceContext:
         self.send_text: Callable = None
         self.client_uid: str = None
 
+    @property
+    def is_realtime(self) -> bool:
+        return bool(
+            self.character_config
+            and self.character_config.realtime_voice
+            and self.character_config.realtime_voice.enabled
+        )
+
     def __str__(self):
         return (
             f"ServiceContext:\n"
             f"  System Config: {'Loaded' if self.system_config else 'Not Loaded'}\n"
-            f"    Details: {json.dumps(self.system_config.model_dump(), indent=6) if self.system_config else 'None'}\n"
             f"  Live2D Model: {self.live2d_model.model_info if self.live2d_model else 'Not Loaded'}\n"
             f"  ASR Engine: {type(self.asr_engine).__name__ if self.asr_engine else 'Not Loaded'}\n"
-            f"    Config: {json.dumps(self.character_config.asr_config.model_dump(), indent=6) if self.character_config.asr_config else 'None'}\n"
             f"  TTS Engine: {type(self.tts_engine).__name__ if self.tts_engine else 'Not Loaded'}\n"
-            f"    Config: {json.dumps(self.character_config.tts_config.model_dump(), indent=6) if self.character_config.tts_config else 'None'}\n"
             f"  LLM Engine: {type(self.agent_engine).__name__ if self.agent_engine else 'Not Loaded'}\n"
-            f"    Agent Config: {json.dumps(self.character_config.agent_config.model_dump(), indent=6) if self.character_config.agent_config else 'None'}\n"
             f"  VAD Engine: {type(self.vad_engine).__name__ if self.vad_engine else 'Not Loaded'}\n"
-            f"    Agent Config: {json.dumps(self.character_config.vad_config.model_dump(), indent=6) if self.character_config.vad_config else 'None'}\n"
-            f"  System Prompt: {self.system_prompt or 'Not Set'}\n"
             f"  MCP Enabled: {'Yes' if self.mcp_client else 'No'}"
         )
 
@@ -190,6 +194,9 @@ class ServiceContext:
     async def close(self):
         """Clean up resources, especially the MCPClient."""
         logger.info("Closing ServiceContext resources...")
+        if self.realtime_session:
+            await self.realtime_session.close()
+            self.realtime_session = None
         if self.mcp_client:
             logger.info(f"Closing MCPClient for context instance {id(self)}...")
             await self.mcp_client.aclose()
@@ -238,13 +245,27 @@ class ServiceContext:
         self.send_text = send_text
         self.client_uid = client_uid
 
+        if self.is_realtime:
+            self.system_prompt = build_qwen_instructions(
+                self.character_config.persona_prompt,
+                self.character_config.teaching_session,
+            )
+            logger.debug(
+                "Loaded realtime service context for {} ({})",
+                character_config.conf_name,
+                character_config.conf_uid,
+            )
+            return
+
         # Initialize session-specific MCP components
         await self._init_mcp_components(
             self.character_config.agent_config.agent_settings.basic_memory_agent.use_mcpp,
             self.character_config.agent_config.agent_settings.basic_memory_agent.mcp_enabled_servers,
         )
 
-        logger.debug(f"Loaded service context with cache: {character_config}")
+        logger.debug(
+            f"Loaded service context for {character_config.conf_name} ({character_config.conf_uid})"
+        )
 
     async def load_from_config(self, config: Config) -> None:
         """
@@ -254,6 +275,10 @@ class ServiceContext:
         Parameters:
         - config (Dict): The configuration dictionary.
         """
+        if self.realtime_session:
+            await self.realtime_session.close()
+            self.realtime_session = None
+
         if not self.config:
             self.config = config
 
@@ -267,6 +292,31 @@ class ServiceContext:
 
         # init live2d from character config
         self.init_live2d(config.character_config.live2d_model_name)
+
+        if (
+            config.character_config.realtime_voice
+            and config.character_config.realtime_voice.enabled
+        ):
+            self.asr_engine = None
+            self.tts_engine = None
+            self.vad_engine = None
+            self.agent_engine = None
+            self.translate_engine = None
+            self.mcp_client = None
+            self.tool_manager = None
+            self.tool_executor = None
+            self.mcp_prompt = ""
+            self.config = config
+            self.system_config = config.system_config or self.system_config
+            self.character_config = config.character_config
+            self.system_prompt = build_qwen_instructions(
+                self.character_config.persona_prompt,
+                self.character_config.teaching_session,
+            )
+            logger.info(
+                "Realtime voice enabled; skipping local ASR, Agent, TTS, VAD, translator, and MCP."
+            )
+            return
 
         # init asr from character config
         self.init_asr(config.character_config.asr_config)
@@ -310,6 +360,19 @@ class ServiceContext:
         self.config = config
         self.system_config = config.system_config or self.system_config
         self.character_config = config.character_config
+
+    async def start_realtime_session(self, send_event: Callable) -> None:
+        """Create the per-client Qwen connection after the browser is connected."""
+        if not self.is_realtime:
+            return
+        if self.realtime_session:
+            await self.realtime_session.close()
+        self.realtime_session = QwenRealtimeSession(
+            config=self.character_config.realtime_voice,
+            instructions=self.system_prompt,
+            send_event=send_event,
+        )
+        await self.realtime_session.connect()
 
     def init_live2d(self, live2d_model_name: str) -> None:
         logger.info(f"Initializing Live2D: {live2d_model_name}")
@@ -513,9 +576,8 @@ class ServiceContext:
                 }
                 new_config = validate_config(new_config)
                 await self.load_from_config(new_config)  # Await the async load
-                logger.debug(f"New config: {self}")
                 logger.debug(
-                    f"New character config: {self.character_config.model_dump()}"
+                    f"New config loaded for {new_config.character_config.conf_name}"
                 )
 
                 # Send responses to client
@@ -547,7 +609,7 @@ class ServiceContext:
 
         except Exception as e:
             logger.error(f"Error switching configuration: {e}")
-            logger.debug(self)
+            logger.debug("Configuration switch failed; details withheld to avoid logging secrets.")
             await websocket.send_text(
                 json.dumps(
                     {

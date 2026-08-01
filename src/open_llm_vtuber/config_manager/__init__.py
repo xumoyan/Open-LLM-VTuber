@@ -8,7 +8,7 @@ and utility functions for loading/saving configurations.
 # Import main configuration classes
 from .main import Config
 from .system import SystemConfig
-from .character import CharacterConfig
+from .character import CharacterConfig, RealtimeVoiceConfig, TeachingSessionConfig
 from .live import LiveConfig, BiliBiliLiveConfig
 from .stateless_llm import (
     OpenAICompatibleConfig,
@@ -69,6 +69,8 @@ __all__ = [
     "Config",
     "SystemConfig",
     "CharacterConfig",
+    "RealtimeVoiceConfig",
+    "TeachingSessionConfig",
     "LiveConfig",
     "BiliBiliLiveConfig",
     # LLM related classes

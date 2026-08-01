@@ -56,7 +56,8 @@ def check_frontend_submodule(lang=None):
         lang = upgrade_manager.lang
 
     frontend_path = Path(__file__).parent / "frontend" / "index.html"
-    if not frontend_path.exists():
+    built_frontend_path = Path(__file__).parent / "frontend" / "dist" / "web" / "index.html"
+    if not frontend_path.exists() and not built_frontend_path.exists():
         if lang == "zh":
             logger.warning("未找到前端子模块，正在尝试初始化子模块...")
         else:
@@ -68,7 +69,7 @@ def check_frontend_submodule(lang=None):
             subprocess.run(
                 ["git", "submodule", "update", "--init", "--recursive"], check=True
             )
-            if frontend_path.exists():
+            if frontend_path.exists() or built_frontend_path.exists():
                 if lang == "zh":
                     logger.info("👍 前端子模块（和其他子模块）初始化成功。")
                 else:

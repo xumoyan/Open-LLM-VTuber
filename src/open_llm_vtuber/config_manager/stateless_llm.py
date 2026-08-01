@@ -64,6 +64,9 @@ class OpenAICompatibleConfig(StatelessLLMBaseConfig):
     organization_id: str | None = Field(None, alias="organization_id")
     project_id: str | None = Field(None, alias="project_id")
     temperature: float = Field(1.0, alias="temperature")
+    reasoning_effort: Literal[
+        "none", "minimal", "low", "medium", "high", "xhigh", "max"
+    ] | None = Field(None, alias="reasoning_effort")
 
     _OPENAI_COMPATIBLE_DESCRIPTIONS: ClassVar[dict[str, Description]] = {
         "base_url": Description(en="Base URL for the API endpoint", zh="API的URL端点"),
@@ -78,6 +81,10 @@ class OpenAICompatibleConfig(StatelessLLMBaseConfig):
         "temperature": Description(
             en="What sampling temperature to use, between 0 and 2.",
             zh="使用的采样温度，介于 0 和 2 之间。",
+        ),
+        "reasoning_effort": Description(
+            en="Reasoning effort for supported models (Optional)",
+            zh="支持该参数的模型所使用的推理强度（可选）",
         ),
     }
 

@@ -1,6 +1,6 @@
 # config_manager/character.py
 from pydantic import Field, field_validator
-from typing import Dict, ClassVar
+from typing import Dict, ClassVar, Literal
 from .i18n import I18nMixin, Description
 from .asr import ASRConfig
 from .tts import TTSConfig
@@ -8,6 +8,56 @@ from .vad import VADConfig
 from .tts_preprocessor import TTSPreprocessorConfig
 
 from .agent import AgentConfig
+
+
+class RealtimeVoiceConfig(I18nMixin):
+    """Configuration for the Qwen audio-to-audio realtime path."""
+
+    enabled: bool = Field(default=False, alias="enabled")
+    provider: Literal["qwen"] = Field(default="qwen", alias="provider")
+    model: str = Field(
+        default="qwen-audio-3.0-realtime-flash", alias="model", min_length=1
+    )
+    voice: str = Field(default="longanqian", alias="voice", min_length=1)
+    base_url: str = Field(
+        default="wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+        alias="base_url",
+        min_length=1,
+    )
+    turn_detection: Literal["smart_turn", "server_vad"] = Field(
+        default="smart_turn", alias="turn_detection"
+    )
+
+    @field_validator("base_url")
+    @classmethod
+    def check_base_url(cls, value: str) -> str:
+        value = value.rstrip("/")
+        if not value.startswith("wss://"):
+            raise ValueError("realtime_voice.base_url must start with wss://")
+        return value
+
+
+class TeachingSessionConfig(I18nMixin):
+    """Trusted, server-owned context appended to the teacher prompt."""
+
+    mode: Literal["free_chat", "topic", "book"] = Field(default="topic")
+    child_age: str = Field(default="3-6", max_length=20)
+    home_language: str = Field(default="Chinese", max_length=40)
+    level: str = Field(default="pre-A1 beginner", max_length=60)
+    session_minutes: int = Field(default=10, ge=1, le=30)
+    topic: str = Field(default="My little animal friends", max_length=160)
+    target_words: list[str] = Field(default_factory=lambda: ["cat", "dog", "duck"], max_length=6)
+    target_phrase: str = Field(default="It's a ___.", max_length=160)
+    material_title: str = Field(default="", max_length=160)
+    material_context: str = Field(default="", max_length=1600)
+
+    @field_validator("target_words")
+    @classmethod
+    def check_target_words(cls, words: list[str]) -> list[str]:
+        cleaned = [word.strip() for word in words if word.strip()]
+        if len(cleaned) > 6:
+            raise ValueError("teaching_session.target_words supports at most 6 words")
+        return cleaned
 
 
 class CharacterConfig(I18nMixin):
@@ -26,6 +76,12 @@ class CharacterConfig(I18nMixin):
     vad_config: VADConfig = Field(..., alias="vad_config")
     tts_preprocessor_config: TTSPreprocessorConfig = Field(
         ..., alias="tts_preprocessor_config"
+    )
+    realtime_voice: RealtimeVoiceConfig | None = Field(
+        default=None, alias="realtime_voice"
+    )
+    teaching_session: TeachingSessionConfig | None = Field(
+        default=None, alias="teaching_session"
     )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
@@ -66,6 +122,12 @@ class CharacterConfig(I18nMixin):
         ),
         "avatar": Description(
             en="Avatar image path for the character", zh="角色头像图片路径"
+        ),
+        "realtime_voice": Description(
+            en="Qwen realtime voice configuration", zh="Qwen 实时语音配置"
+        ),
+        "teaching_session": Description(
+            en="Trusted child English teaching context", zh="可信儿童英语课程上下文"
         ),
     }
 

@@ -1,3 +1,5 @@
+import base64
+import binascii
 from typing import Dict, List, Optional, Callable, TypedDict
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
@@ -20,6 +22,7 @@ from .chat_history_manager import (
     get_history,
     delete_history,
     get_history_list,
+    store_message,
 )
 from .config_manager.utils import scan_config_alts_directory, scan_bg_directory
 from .conversations.conversation_handler import (
@@ -39,10 +42,21 @@ class MessageType(Enum):
         "create-new-history",
         "delete-history",
     ]
-    CONVERSATION = ["mic-audio-end", "text-input", "ai-speak-signal"]
+    CONVERSATION = [
+        "mic-audio-end",
+        "text-input",
+        "ai-speak-signal",
+        "text.message",
+    ]
     CONFIG = ["fetch-configs", "switch-config"]
-    CONTROL = ["interrupt-signal", "audio-play-start"]
-    DATA = ["mic-audio-data"]
+    CONTROL = [
+        "interrupt-signal",
+        "audio-play-start",
+        "interrupt",
+        "mute",
+        "unmute",
+    ]
+    DATA = ["mic-audio-data", "audio.append"]
 
 
 class WSMessage(TypedDict, total=False):
@@ -51,7 +65,7 @@ class WSMessage(TypedDict, total=False):
     type: str
     action: Optional[str]
     text: Optional[str]
-    audio: Optional[List[float]]
+    audio: Optional[List[float] | str]
     images: Optional[List[str]]
     history_uid: Optional[str]
     file: Optional[str]
@@ -69,6 +83,7 @@ class WebSocketHandler:
         self.current_conversation_tasks: Dict[str, Optional[asyncio.Task]] = {}
         self.default_context_cache = default_context_cache
         self.received_data_buffers: Dict[str, np.ndarray] = {}
+        self.pending_realtime_assistant: Dict[tuple[str, str], str] = {}
 
         # Message handlers mapping
         self._message_handlers = self._init_message_handlers()
@@ -84,6 +99,12 @@ class WebSocketHandler:
             "create-new-history": self._handle_create_history,
             "delete-history": self._handle_delete_history,
             "interrupt-signal": self._handle_interrupt,
+            "interrupt": self._handle_interrupt,
+            "connect": self._handle_realtime_connect,
+            "unmute": self._handle_realtime_connect,
+            "mute": self._handle_realtime_mute,
+            "audio.append": self._handle_realtime_audio,
+            "text.message": self._handle_realtime_text,
             "mic-audio-data": self._handle_audio_data,
             "mic-audio-end": self._handle_conversation_trigger,
             "raw-audio-data": self._handle_raw_audio_data,
@@ -93,6 +114,9 @@ class WebSocketHandler:
             "switch-config": self._handle_config_switch,
             "fetch-backgrounds": self._handle_fetch_backgrounds,
             "audio-play-start": self._handle_audio_play_start,
+            "playback.started": self._handle_realtime_playback_started,
+            "playback.ended": self._handle_realtime_playback_ended,
+            "playback.cancelled": self._handle_realtime_playback_cancelled,
             "request-init-config": self._handle_init_config_request,
             "heartbeat": self._handle_heartbeat,
         }
@@ -122,6 +146,9 @@ class WebSocketHandler:
             await self._send_initial_messages(
                 websocket, client_uid, session_service_context
             )
+
+            if session_service_context.is_realtime:
+                await self._start_realtime_session(client_uid)
 
             logger.info(f"Connection established for client {client_uid}")
 
@@ -201,6 +228,69 @@ class WebSocketHandler:
         )
         return session_service_context
 
+    async def _start_realtime_session(self, client_uid: str) -> None:
+        context = self.client_contexts.get(client_uid)
+        if not context or not context.is_realtime:
+            return
+
+        async def send_event(event: dict) -> None:
+            await self._emit_realtime_event(client_uid, event)
+
+        try:
+            await context.start_realtime_session(send_event)
+        except Exception as error:
+            logger.warning(
+                "Realtime voice unavailable for {}: {}",
+                client_uid,
+                type(error).__name__,
+            )
+            await self._emit_realtime_event(
+                client_uid,
+                {
+                    "type": "error",
+                    "code": "qwen_connect_failed",
+                    "message": str(error),
+                    "recoverable": False,
+                },
+            )
+
+    async def _emit_realtime_event(self, client_uid: str, event: dict) -> None:
+        """Persist final transcript events, then forward the normalized event."""
+        context = self.client_contexts.get(client_uid)
+        websocket = self.client_connections.get(client_uid)
+        if not context or not websocket:
+            return
+
+        if event.get("type") == "transcript.final" and context.history_uid:
+            content = str(event.get("content") or "").strip()
+            role = event.get("role")
+            if content and role == "user":
+                store_message(
+                    conf_uid=context.character_config.conf_uid,
+                    history_uid=context.history_uid,
+                    role="human",
+                    content=content,
+                    name=context.character_config.human_name,
+                )
+            elif content and role == "assistant":
+                response_id = str(event.get("responseId") or "")
+                if response_id:
+                    self.pending_realtime_assistant[(client_uid, response_id)] = content
+                else:
+                    store_message(
+                        conf_uid=context.character_config.conf_uid,
+                        history_uid=context.history_uid,
+                        role="ai",
+                        content=content,
+                        name=context.character_config.character_name,
+                        avatar=context.character_config.avatar,
+                    )
+        elif event.get("type") == "response.interrupted":
+            response_id = str(event.get("responseId") or "")
+            self.pending_realtime_assistant.pop((client_uid, response_id), None)
+
+        await websocket.send_json(event)
+
     async def handle_websocket_communication(
         self, websocket: WebSocket, client_uid: str
     ) -> None:
@@ -263,6 +353,16 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: dict
     ) -> None:
         """Handle group-related operations"""
+        if self.client_contexts[client_uid].is_realtime:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": "Qwen 实时儿童模式暂不支持群组语音。",
+                    "recoverable": False,
+                }
+            )
+            return
+
         operation = data.get("type")
         target_uid = data.get(
             "invitee_uid" if operation == "add-client-to-group" else "target_uid"
@@ -297,10 +397,14 @@ class WebSocketHandler:
             send_group_update=self.send_group_update,
         )
 
+        context = self.client_contexts.get(client_uid)
+
         # Clean up other client data
         self.client_connections.pop(client_uid, None)
         self.client_contexts.pop(client_uid, None)
         self.received_data_buffers.pop(client_uid, None)
+        for key in [key for key in self.pending_realtime_assistant if key[0] == client_uid]:
+            self.pending_realtime_assistant.pop(key, None)
         if client_uid in self.current_conversation_tasks:
             task = self.current_conversation_tasks[client_uid]
             if task and not task.done():
@@ -308,7 +412,6 @@ class WebSocketHandler:
             self.current_conversation_tasks.pop(client_uid, None)
 
         # Call context close to clean up resources (e.g., MCPClient)
-        context = self.client_contexts.get(client_uid)
         if context:
             await context.close()
 
@@ -317,8 +420,10 @@ class WebSocketHandler:
 
     async def _cleanup_failed_connection(self, client_uid: str) -> None:
         """Clean up failed connection data"""
+        context = self.client_contexts.pop(client_uid, None)
+        if context:
+            await context.close()
         self.client_connections.pop(client_uid, None)
-        self.client_contexts.pop(client_uid, None)
         self.received_data_buffers.pop(client_uid, None)
         self.chat_group_manager.client_group_map.pop(client_uid, None)
 
@@ -372,6 +477,12 @@ class WebSocketHandler:
         """Handle conversation interruption"""
         heard_response = data.get("text", "")
         context = self.client_contexts[client_uid]
+        if context.is_realtime:
+            if context.realtime_session:
+                await context.realtime_session.cancel(
+                    str(data.get("reason") or "user_interruption")
+                )
+            return
         group = self.chat_group_manager.get_client_group(client_uid)
 
         if group and len(group.members) > 1:
@@ -412,10 +523,11 @@ class WebSocketHandler:
         context = self.client_contexts[client_uid]
         # Update history_uid in service context
         context.history_uid = history_uid
-        context.agent_engine.set_memory_from_history(
-            conf_uid=context.character_config.conf_uid,
-            history_uid=history_uid,
-        )
+        if not context.is_realtime:
+            context.agent_engine.set_memory_from_history(
+                conf_uid=context.character_config.conf_uid,
+                history_uid=history_uid,
+            )
 
         messages = [
             msg
@@ -437,10 +549,11 @@ class WebSocketHandler:
         history_uid = create_new_history(context.character_config.conf_uid)
         if history_uid:
             context.history_uid = history_uid
-            context.agent_engine.set_memory_from_history(
-                conf_uid=context.character_config.conf_uid,
-                history_uid=history_uid,
-            )
+            if not context.is_realtime:
+                context.agent_engine.set_memory_from_history(
+                    conf_uid=context.character_config.conf_uid,
+                    history_uid=history_uid,
+                )
             await websocket.send_text(
                 json.dumps(
                     {
@@ -479,6 +592,9 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle incoming audio data"""
+        context = self.client_contexts[client_uid]
+        if context.is_realtime:
+            return
         audio_data = data.get("audio", [])
         if audio_data:
             self.received_data_buffers[client_uid] = np.append(
@@ -491,6 +607,8 @@ class WebSocketHandler:
     ) -> None:
         """Handle incoming raw audio data for VAD processing"""
         context = self.client_contexts[client_uid]
+        if context.is_realtime:
+            return
         chunk = data.get("audio", [])
         if chunk:
             for audio_bytes in context.vad_engine.detect_speech(chunk):
@@ -514,6 +632,11 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle triggers that start a conversation"""
+        context = self.client_contexts[client_uid]
+        if context.is_realtime:
+            if data.get("type") == "text-input" and context.realtime_session:
+                await context.realtime_session.send_text(str(data.get("text") or ""))
+            return
         await handle_conversation_trigger(
             msg_type=data.get("type", ""),
             data=data,
@@ -546,6 +669,66 @@ class WebSocketHandler:
         if config_file_name:
             context = self.client_contexts[client_uid]
             await context.handle_config_switch(websocket, config_file_name)
+            if context.is_realtime:
+                await self._start_realtime_session(client_uid)
+
+    async def _handle_realtime_connect(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        """Connect only the Qwen session for a realtime-enabled character."""
+        context = self.client_contexts[client_uid]
+        if context.is_realtime and not context.realtime_session:
+            await self._start_realtime_session(client_uid)
+
+    async def _handle_realtime_mute(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        context = self.client_contexts[client_uid]
+        if context.is_realtime and context.realtime_session:
+            await context.realtime_session.cancel("muted")
+
+    async def _handle_realtime_audio(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        context = self.client_contexts[client_uid]
+        audio = data.get("audio")
+        if not context.is_realtime or not isinstance(audio, str):
+            return
+        if len(audio) > 96_000:
+            await self._emit_realtime_event(
+                client_uid,
+                {
+                    "type": "error",
+                    "code": "invalid_audio_chunk",
+                    "message": "实时音频分片过大。",
+                    "recoverable": True,
+                },
+            )
+            return
+        try:
+            pcm = base64.b64decode(audio, validate=True)
+        except (binascii.Error, ValueError):
+            await self._emit_realtime_event(
+                client_uid,
+                {
+                    "type": "error",
+                    "code": "invalid_audio_chunk",
+                    "message": "实时音频格式无效。",
+                    "recoverable": True,
+                },
+            )
+            return
+        if not pcm or len(pcm) % 2:
+            return
+        if context.realtime_session:
+            await context.realtime_session.append_audio(audio)
+
+    async def _handle_realtime_text(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        context = self.client_contexts[client_uid]
+        if context.is_realtime and context.realtime_session:
+            await context.realtime_session.send_text(str(data.get("text") or ""))
 
     async def _handle_fetch_backgrounds(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
@@ -575,6 +758,48 @@ class WebSocketHandler:
                 await self.broadcast_to_group(
                     group_members, silent_payload, exclude_uid=client_uid
                 )
+
+    async def _handle_realtime_playback_ended(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        context = self.client_contexts[client_uid]
+        if not context.is_realtime:
+            return
+        response_id = str(data.get("responseId") or "")
+        content = self.pending_realtime_assistant.pop((client_uid, response_id), "")
+        if content and context.history_uid:
+            store_message(
+                conf_uid=context.character_config.conf_uid,
+                history_uid=context.history_uid,
+                role="ai",
+                content=content,
+                name=context.character_config.character_name,
+                avatar=context.character_config.avatar,
+            )
+        await self._emit_realtime_event(
+            client_uid,
+            {"type": "voice.state", "state": "idle", "responseId": response_id},
+        )
+
+    async def _handle_realtime_playback_started(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        context = self.client_contexts[client_uid]
+        if context.is_realtime:
+            await self._emit_realtime_event(
+                client_uid,
+                {
+                    "type": "voice.state",
+                    "state": "speaking",
+                    "responseId": str(data.get("responseId") or ""),
+                },
+            )
+
+    async def _handle_realtime_playback_cancelled(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        response_id = str(data.get("responseId") or "")
+        self.pending_realtime_assistant.pop((client_uid, response_id), None)
 
     async def _handle_group_info(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
