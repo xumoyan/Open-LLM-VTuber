@@ -147,9 +147,6 @@ class WebSocketHandler:
                 websocket, client_uid, session_service_context
             )
 
-            if session_service_context.is_realtime:
-                await self._start_realtime_session(client_uid)
-
             logger.info(f"Connection established for client {client_uid}")
 
         except Exception as e:

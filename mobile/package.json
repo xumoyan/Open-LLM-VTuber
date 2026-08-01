@@ -1,0 +1,21 @@
+{
+  "name": "ai-english-tutor-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:web": "VITE_MOBILE_APP=1 npm --prefix ../frontend run build:web",
+    "sync": "npm run build:web && cap sync",
+    "sync:android-ip-test": "VITE_MOBILE_APP=1 VITE_BACKEND_URL=http://221.216.142.92:18080 VITE_MOBILE_TEST_TOKEN=$MOBILE_ACCESS_TOKEN npm --prefix ../frontend run build:web && MOBILE_TEST_IP=1 cap sync android",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "typescript": "~5.9.3"
+  }
+}

@@ -70,7 +70,7 @@ RUN printf '%s\n' \
   'fi' \
   '' \
   '# 7) start app' \
-  'exec uv run run_server.py' \
+  'exec uv run run_server.py --container --host "${SERVER_HOST:-0.0.0.0}" --port "${SERVER_PORT:-12393}"' \
   > /usr/local/bin/start-app && chmod +x /usr/local/bin/start-app
 
 # Volumes

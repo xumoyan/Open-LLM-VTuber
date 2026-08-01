@@ -1,5 +1,7 @@
 import os
 import json
+import asyncio
+import secrets
 from uuid import uuid4
 import numpy as np
 from datetime import datetime
@@ -12,7 +14,36 @@ from .websocket_handler import WebSocketHandler
 from .proxy_handler import ProxyHandler
 
 
-def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
+def is_valid_mobile_access_token(payload: object, expected_token: str | None) -> bool:
+    """Check the optional single-device test token without logging its value."""
+    return (
+        isinstance(payload, dict)
+        and payload.get("type") == "auth"
+        and isinstance(payload.get("token"), str)
+        and bool(expected_token)
+        and secrets.compare_digest(payload["token"], expected_token)
+    )
+
+
+async def _authenticate_mobile_test_connection(
+    websocket: WebSocket, expected_token: str | None
+) -> bool:
+    if not expected_token:
+        return True
+    try:
+        payload = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+    except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect):
+        await websocket.close(code=4401)
+        return False
+    if not is_valid_mobile_access_token(payload, expected_token):
+        await websocket.close(code=4401)
+        return False
+    return True
+
+
+def init_client_ws_route(
+    default_context_cache: ServiceContext, mobile_access_token: str | None = None
+) -> APIRouter:
     """
     Create and return API routes for handling the `/client-ws` WebSocket connections.
 
@@ -30,6 +61,8 @@ def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
     async def websocket_endpoint(websocket: WebSocket):
         """WebSocket endpoint for client connections"""
         await websocket.accept()
+        if not await _authenticate_mobile_test_connection(websocket, mobile_access_token):
+            return
         client_uid = str(uuid4())
 
         try:

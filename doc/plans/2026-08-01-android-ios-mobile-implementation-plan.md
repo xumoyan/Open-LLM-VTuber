@@ -1,9 +1,11 @@
 # Android / iOS 移动端实施计划
 
 > 日期：2026-08-01  
-> 状态：方案已确定；M0 第一批代码已完成，原生工程尚未生成  
+> 状态：M0 已完成；M2 私测容器与 M3 原生工程已生成；Android Debug APK 已在 Java 21/SDK 36 环境构建通过，等待真机测试与 Xcode 完整解压
 > 前置结果：Qwen Audio Realtime 桌面链路已由用户验证可用  
 > 关联计划：[Qwen 实时语音接入计划](./2026-08-01-qwen-realtime-child-english-teacher-plan.md)；[儿童英语产品总计划](./2026-07-31-preschool-online-english-teacher-plan.md)
+
+当前测试标识：App 名称 `AI 外教`、iOS bundle ID/Android application ID `ai.english.tutor`、Android Debug 测试后端 `http://221.216.142.92:18080`。
 
 ## 0. 结论
 
@@ -188,8 +190,8 @@ PWA 不是另一套产品。它和原生壳使用同一个 `frontend/dist/web`�
 实施项：
 
 1. `websocket-service.tsx` 增加单实例指数退避重连；
-2. 麦克风点击回调同步创建/恢复 AudioContext；
-3. 去掉服务端连接后自动 `start-mic`；
+2. 麦克风点击回调同步创建/恢复 AudioContext；已在移动 build 的第一次点击中执行；
+3. 去掉移动 build 的服务端自动 `start-mic`；已实施，桌面行为保持不变；
 4. `vad-context.tsx` 监听后台/锁屏并彻底释放录音；
 5. 回前台显示显式继续按钮，不自动录音；
 6. 权限拒绝显示儿童可理解、家长可操作的恢复提示；
@@ -207,6 +209,8 @@ PWA 不是另一套产品。它和原生壳使用同一个 `frontend/dist/web`�
 - WebSocket 接受网络连接后只等待 `auth` 首帧，使用 `secrets.compare_digest` 校验；
 - 鉴权成功前不得构造 ServiceContext、创建 Qwen 连接或读取历史；
 - 临时 token 只适合受邀私测，不作为多家庭账号系统。
+
+已实施：`docker-compose.mobile-test.yml` 以 Docker 启动容器；`--container` 跳过子模块拉取和配置写入；`MOBILE_TEST_MODE=1` 只暴露 `/client-ws`、`/healthz` 和客户端所需的形象静态资源；`MOBILE_ACCESS_TOKEN` 必须先作为 `auth` 第一帧通过，才创建 ServiceContext 或 Qwen 连接。连接建立本身不再启动 Qwen，首次点击麦克风发送 `connect` 后才创建会话。
 
 ### M2.2 公网 beta 必做
 
@@ -237,7 +241,7 @@ PWA 不是另一套产品。它和原生壳使用同一个 `frontend/dist/web`�
 
 ## M3：Capacitor Android/iOS 原生壳
 
-等第 11 节的产品标识确定后再生成，避免提交需要整体改名的原生工程。
+已生成，产品标识已固定为 App 名称 `AI 外教`、iOS bundle ID/Android application ID `ai.english.tutor`。依赖锁定为 Capacitor 8.5.0；iOS/Android 生成目录位于根目录 `mobile/`，不进入 `frontend` 子模块。
 
 建议根目录新增 `mobile/`，不要把生成的 iOS/Android 工程塞进 `frontend` Git 子模块：
 
@@ -265,6 +269,8 @@ mobile/
 - 每次 build 后执行 `cap sync`；
 - iOS/Android 生成目录作为源码提交；
 - 开发者证书、provisioning profile、keystore 和密码不进入 Git。
+
+Android 已声明 `INTERNET`、`RECORD_AUDIO`；iOS 已声明 `NSMicrophoneUsageDescription` 且固定竖屏。`sync:android-ip-test` 仅在 Android Debug 中允许当前 HTTP/WS IP；iOS 与 release 没有 ATS/cleartext 例外。
 
 退出条件：Xcode/Android Studio 能在真机启动包内页面，且 release 包不依赖远程网页才能显示 UI。
 
@@ -378,15 +384,13 @@ VITE_BACKEND_URL=https://api.example.com npm run build:web
 
 `VITE_BACKEND_URL` 只是公开后端地址，不能放任何 Key 或长期客户端 token。
 
-### M3 完成后的原生同步
+### 当前原生同步
 
 ```bash
-cd frontend
-npm run build:web
-cd ../mobile
-npx cap sync
-npx cap open ios
-npx cap open android
+cd mobile
+corepack pnpm run sync
+corepack pnpm run open:ios
+corepack pnpm run open:android
 ```
 
 不要在产品标识未确定前执行/提交 `cap add ios/android`。
@@ -446,21 +450,22 @@ npx cap open android
 | F：真机 QA | 独立测试记录 | A–E | TestFlight/Play 内测门 |
 | G：隐私/资产 | 家长同意、政策、许可清单 | beta 前 | 可邀请家庭/上架 |
 
-本轮已经完成 A/B 的架构审计、C/D 的安全审计，并实施 M0。下一批代码从 M1 和 M2 开始；在产品标识确定前不生成 E。
+本轮已经完成 A/B 的架构审计、C/D 的安全审计，实施了 M0、M2 私测入口和 M3 原生壳。下一批代码从 M1 的前后台/重连真机修复开始；M4 只在 Web Audio 真机失败时增加原生音频桥。
 
 ## 11. 继续原生实施前需要确定的 5 个值
 
-这些选择会写进签名工程，不能用随意占位符提交：
+以下值已经确定并写入原生工程：
 
-1. App 正式显示名，例如“AI English Teacher”是否保留；
-2. iOS bundle ID，例如 `com.<company>.englishteacher`；
-3. Android application ID，通常与 bundle ID 相同；
-4. 正式后端域名，例如 `api.<domain>`；
-5. 分发目标：仅自己安装、受邀家庭、TestFlight/Play 内测，还是公开商店。
+1. App 显示名：`AI 外教`；
+2. iOS bundle ID：`ai.english.tutor`；
+3. Android application ID：`ai.english.tutor`；
+4. Android Debug 测试后端：`221.216.142.92:18080`。
+
+仍需确定：分发目标（仅自己安装、受邀家庭、TestFlight/Play 内测或公开商店）和正式 HTTPS/WSS 域名。纯 IP 只能用于 Android Debug 私测，不能作为 iOS 或 release 的实时服务地址。
 
 此外，在受邀家庭前确定：目标年龄段、是否保存转写/历史、数据地域、Apple Developer/Google Play 账号归属和正式教师形象资产。
 
-上述值不阻塞 M1/M2；只阻塞生成和签名原生工程。
+剩余值不阻塞 M1；会阻塞 iOS 真机实时联调、签名和商店发布。
 
 ## 12. 风险和回退
 

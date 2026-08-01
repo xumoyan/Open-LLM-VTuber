@@ -34,6 +34,8 @@ conda
 
 # Sensitive data
 .env
+mobile/.env.test
+mobile/node_modules/
 api_keys.py
 src/open_llm_vtuber/llm/user_credentials.json
 

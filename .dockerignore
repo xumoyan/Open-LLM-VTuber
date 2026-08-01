@@ -36,6 +36,10 @@ lab.py
 .venv/
 .conda/
 conda/
+.uv-cache/
+frontend/node_modules/
+mobile/node_modules/
+mobile/
 
 # API keys, secrets
 .env

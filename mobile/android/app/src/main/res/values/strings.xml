@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI 外教</string>
+    <string name="title_activity_main">AI 外教</string>
+    <string name="package_name">ai.english.tutor</string>
+    <string name="custom_url_scheme">ai.english.tutor</string>
+</resources>

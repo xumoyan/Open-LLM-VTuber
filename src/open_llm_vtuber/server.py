@@ -73,6 +73,7 @@ class WebSocketServer:
 
     def __init__(self, config: Config, default_context_cache: ServiceContext = None):
         self.app = FastAPI(title="Open-LLM-VTuber Server")  # Added title for clarity
+        mobile_test_mode = os.getenv("MOBILE_TEST_MODE") == "1"
         self.config = config
         self.default_context_cache = (
             default_context_cache or ServiceContext()
@@ -83,7 +84,7 @@ class WebSocketServer:
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
-            allow_credentials=True,
+            allow_credentials=not mobile_test_mode,
             allow_methods=["*"],
             allow_headers=["*"],
         )
@@ -91,15 +92,23 @@ class WebSocketServer:
         # Include routes, passing the context instance
         # The context will be populated during the initialize step
         self.app.include_router(
-            init_client_ws_route(default_context_cache=self.default_context_cache),
+            init_client_ws_route(
+                default_context_cache=self.default_context_cache,
+                mobile_access_token=os.getenv("MOBILE_ACCESS_TOKEN"),
+            ),
         )
-        self.app.include_router(
-            init_webtool_routes(default_context_cache=self.default_context_cache),
-        )
+        if not mobile_test_mode:
+            self.app.include_router(
+                init_webtool_routes(default_context_cache=self.default_context_cache),
+            )
 
         # Initialize and include proxy routes if proxy is enabled
         system_config = config.system_config
-        if hasattr(system_config, "enable_proxy") and system_config.enable_proxy:
+        if (
+            not mobile_test_mode
+            and hasattr(system_config, "enable_proxy")
+            and system_config.enable_proxy
+        ):
             # Construct the server URL for the proxy
             host = system_config.host
             port = system_config.port
@@ -108,14 +117,19 @@ class WebSocketServer:
                 init_proxy_route(server_url=server_url),
             )
 
-        # Mount cache directory first (to ensure audio file access)
-        if not os.path.exists("cache"):
-            os.makedirs("cache")
-        self.app.mount(
-            "/cache",
-            CORSStaticFiles(directory="cache"),
-            name="cache",
-        )
+        if mobile_test_mode:
+            @self.app.get("/healthz")
+            async def healthz():
+                return {"status": "ok"}
+        else:
+            # Mount cache directory first (to ensure audio file access)
+            if not os.path.exists("cache"):
+                os.makedirs("cache")
+            self.app.mount(
+                "/cache",
+                CORSStaticFiles(directory="cache"),
+                name="cache",
+            )
 
         # Mount static files with CORS-enabled handlers
         self.app.mount(
@@ -134,25 +148,26 @@ class WebSocketServer:
             name="avatars",
         )
 
-        # Mount web tool directory separately from frontend
-        self.app.mount(
-            "/web-tool",
-            CORSStaticFiles(directory="web_tool", html=True),
-            name="web_tool",
-        )
+        if not mobile_test_mode:
+            # Mount web tool directory separately from frontend
+            self.app.mount(
+                "/web-tool",
+                CORSStaticFiles(directory="web_tool", html=True),
+                name="web_tool",
+            )
 
-        # During source-branch development Vite writes the web build here; the
-        # deployment submodule still exposes its files at frontend/ directly.
-        frontend_dir = os.path.join("frontend", "dist", "web")
-        if not os.path.isdir(frontend_dir):
-            frontend_dir = "frontend"
+            # During source-branch development Vite writes the web build here; the
+            # deployment submodule still exposes its files at frontend/ directly.
+            frontend_dir = os.path.join("frontend", "dist", "web")
+            if not os.path.isdir(frontend_dir):
+                frontend_dir = "frontend"
 
-        # Mount main frontend last (as catch-all)
-        self.app.mount(
-            "/",
-            CORSStaticFiles(directory=frontend_dir, html=True),
-            name="frontend",
-        )
+            # Mount main frontend last (as catch-all)
+            self.app.mount(
+                "/",
+                CORSStaticFiles(directory=frontend_dir, html=True),
+                name="frontend",
+            )
 
     async def initialize(self):
         """Asynchronously load the service context from config.

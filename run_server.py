@@ -25,7 +25,7 @@ def get_version() -> str:
     return pyproject["project"]["version"]
 
 
-def init_logger(console_log_level: str = "INFO") -> None:
+def init_logger(console_log_level: str = "INFO", write_debug_log: bool = True) -> None:
     logger.remove()
     # Console output
     logger.add(
@@ -35,16 +35,16 @@ def init_logger(console_log_level: str = "INFO") -> None:
         colorize=True,
     )
 
-    # File output
-    logger.add(
-        "logs/debug_{time:YYYY-MM-DD}.log",
-        rotation="10 MB",
-        retention="30 days",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message} | {extra}",
-        backtrace=True,
-        diagnose=True,
-    )
+    if write_debug_log:
+        logger.add(
+            "logs/debug_{time:YYYY-MM-DD}.log",
+            rotation="10 MB",
+            retention="30 days",
+            level="DEBUG",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message} | {extra}",
+            backtrace=True,
+            diagnose=True,
+        )
 
 
 def check_frontend_submodule(lang=None):
@@ -114,25 +114,38 @@ def parse_args():
     parser.add_argument(
         "--hf_mirror", action="store_true", help="Use Hugging Face mirror"
     )
+    parser.add_argument("--host", help="Override the configured listen host")
+    parser.add_argument("--port", type=int, help="Override the configured listen port")
+    parser.add_argument(
+        "--container",
+        action="store_true",
+        help="Container mode: skip Git/config writes and log only to stdout",
+    )
     return parser.parse_args()
 
 
 @logger.catch
-def run(console_log_level: str):
-    init_logger(console_log_level)
+def run(
+    console_log_level: str,
+    host_override: str | None = None,
+    port_override: int | None = None,
+    container: bool = False,
+):
+    init_logger(console_log_level, write_debug_log=not container)
     logger.info(f"Open-LLM-VTuber, version v{get_version()}")
 
-    # Get selected language
-    lang = upgrade_manager.lang
+    if not container:
+        # Get selected language
+        lang = upgrade_manager.lang
 
-    # Check if the frontend submodule is initialized
-    check_frontend_submodule(lang)
+        # Check if the frontend submodule is initialized
+        check_frontend_submodule(lang)
 
-    # Sync user config with default config
-    try:
-        upgrade_manager.sync_user_config()
-    except Exception as e:
-        logger.error(f"Error syncing user config: {e}")
+        # Sync user config with default config
+        try:
+            upgrade_manager.sync_user_config()
+        except Exception as e:
+            logger.error(f"Error syncing user config: {e}")
 
     atexit.register(WebSocketServer.clean_cache)
 
@@ -156,11 +169,13 @@ def run(console_log_level: str):
         sys.exit(1)  # Exit if initialization fails
 
     # Run the Uvicorn server
-    logger.info(f"Starting server on {server_config.host}:{server_config.port}")
+    host = host_override or server_config.host
+    port = port_override or server_config.port
+    logger.info(f"Starting server on {host}:{port}")
     uvicorn.run(
         app=server.app,
-        host=server_config.host,
-        port=server_config.port,
+        host=host,
+        port=port,
         log_level=console_log_level.lower(),
     )
 
@@ -176,4 +191,9 @@ if __name__ == "__main__":
         )
     if args.hf_mirror:
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    run(console_log_level=console_log_level)
+    run(
+        console_log_level=console_log_level,
+        host_override=args.host,
+        port_override=args.port,
+        container=args.container,
+    )

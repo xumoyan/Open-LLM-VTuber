@@ -1,0 +1,21 @@
+services:
+  ai-english-tutor:
+    build:
+      context: .
+      dockerfile: dockerfile
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:?set in .env}
+      MOBILE_ACCESS_TOKEN: ${MOBILE_ACCESS_TOKEN:?set in .env}
+      MOBILE_TEST_MODE: "1"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 12393
+    ports:
+      - "18080:12393"
+    volumes:
+      - ./conf.yaml:/app/conf/conf.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:12393/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
