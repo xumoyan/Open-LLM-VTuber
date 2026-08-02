@@ -8,6 +8,7 @@ import { useConfig } from '@/context/character-config-context';
 import { useSidebar } from '@/hooks/sidebar/use-sidebar';
 import { useSwitchCharacter } from '@/hooks/utils/use-switch-character';
 import { useSubtitle } from '@/context/subtitle-context';
+import { useVAD } from '@/context/vad-context';
 import { useWebSocket } from '@/context/websocket-context';
 import {
   DrawerBackdrop, DrawerCloseTrigger, DrawerContent,
@@ -25,6 +26,7 @@ export function MobileSettingsSheet({ open, onClose }: MobileSettingsSheetProps)
   const { switchCharacter } = useSwitchCharacter();
   const { createNewHistory } = useSidebar();
   const { showSubtitle, setShowSubtitle } = useSubtitle();
+  const { allowInterrupt, setAllowInterrupt } = useVAD();
   const { wsState, reconnect } = useWebSocket();
   const [confirmNewLesson, setConfirmNewLesson] = useState(false);
 
@@ -90,6 +92,19 @@ export function MobileSettingsSheet({ open, onClose }: MobileSettingsSheetProps)
               checked={showSubtitle}
               colorPalette="purple"
               onCheckedChange={(details) => setShowSubtitle(details.checked)}
+            />
+          </Flex>
+
+          <Flex align="center" justify="space-between" minH="56px" mt="5" gap="3">
+            <Box>
+              <Text fontWeight="medium">{t('mobile.allowTeacherInterrupt')}</Text>
+              <Text color="whiteAlpha.600" fontSize="sm">{t('mobile.allowTeacherInterruptHelp')}</Text>
+            </Box>
+            <Switch
+              aria-label={t('mobile.allowTeacherInterrupt')}
+              checked={allowInterrupt}
+              colorPalette="purple"
+              onCheckedChange={(details) => setAllowInterrupt(details.checked)}
             />
           </Flex>
 

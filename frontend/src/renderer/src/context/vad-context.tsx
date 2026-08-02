@@ -25,10 +25,12 @@ export interface AudioInputDevice {
 
 interface VADState {
   autoStopMic: boolean;
+  allowInterrupt: boolean;
   micOn: boolean;
   micError: string | null;
   setMicOn: (value: boolean) => void;
   setAutoStopMic: (value: boolean) => void;
+  setAllowInterrupt: (value: boolean) => void;
   startMic: () => Promise<void>;
   stopMic: () => void;
   previousTriggeredProbability: number;
@@ -53,6 +55,7 @@ const DEFAULT_VAD_SETTINGS: VADSettings = {
 
 const DEFAULT_VAD_STATE = {
   autoStopMic: false,
+  allowInterrupt: true,
   autoStartMicOn: false,
   autoStartMicOnConvEnd: false,
 };
@@ -97,6 +100,11 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     'autoStopMic',
     DEFAULT_VAD_STATE.autoStopMic,
   );
+  const [allowInterrupt, setAllowInterruptState] = useLocalStorage(
+    'allowInterrupt',
+    DEFAULT_VAD_STATE.allowInterrupt,
+  );
+  const allowInterruptRef = useRef(allowInterrupt);
   const [settings, setSettings] = useLocalStorage<VADSettings>(
     'vadSettings',
     DEFAULT_VAD_SETTINGS,
@@ -136,6 +144,7 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { setSubtitleTextRef.current = setSubtitleText; }, [setSubtitleText]);
   useEffect(() => { setAiStateRef.current = setAiState; }, [setAiState]);
   useEffect(() => { autoStopMicRef.current = autoStopMic; }, [autoStopMic]);
+  useEffect(() => { allowInterruptRef.current = allowInterrupt; }, [allowInterrupt]);
   useEffect(() => { autoStartMicRef.current = autoStartMicOn; }, [autoStartMicOn]);
   useEffect(() => { autoStartMicOnConvEndRef.current = autoStartMicOnConvEnd; }, [autoStartMicOnConvEnd]);
   useEffect(() => { selectedDeviceIdRef.current = selectedAudioInputDeviceId; }, [selectedAudioInputDeviceId]);
@@ -165,6 +174,10 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const sendRealtimeFrame = useCallback((frame: Float32Array) => {
+    if (!allowInterruptRef.current && aiStateRef.current === 'thinking-speaking') {
+      pendingPcmRef.current = new Float32Array(0);
+      return;
+    }
     const previous = pendingPcmRef.current;
     const merged = new Float32Array(previous.length + frame.length);
     merged.set(previous);
@@ -188,6 +201,7 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
 
   const handleSpeechRealStart = useCallback(() => {
     if (previousAiStateRef.current === 'thinking-speaking') {
+      if (!allowInterruptRef.current) return;
       interruptRef.current();
     }
     setAiStateRef.current('listening');
@@ -337,6 +351,12 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     forceUpdate();
   }, []);
 
+  const setAllowInterrupt = useCallback((value: boolean) => {
+    allowInterruptRef.current = value;
+    setAllowInterruptState(value);
+    forceUpdate();
+  }, []);
+
   const setAutoStartMicOn = useCallback((value: boolean) => {
     autoStartMicRef.current = value;
     setAutoStartMicOnState(value);
@@ -352,10 +372,12 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo(
     () => ({
       autoStopMic: autoStopMicRef.current,
+      allowInterrupt,
       micOn,
       micError,
       setMicOn,
       setAutoStopMic,
+      setAllowInterrupt,
       startMic,
       stopMic,
       previousTriggeredProbability: previousTriggeredProbabilityRef.current,
@@ -373,11 +395,13 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       audioInputDevices,
+      allowInterrupt,
       micOn,
       micError,
       refreshAudioInputDevices,
       selectedAudioInputDeviceId,
       setPreviousTriggeredProbability,
+      setAllowInterrupt,
       setSelectedAudioInputDeviceId,
       settings,
       startMic,

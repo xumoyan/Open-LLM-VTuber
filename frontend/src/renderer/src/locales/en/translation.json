@@ -145,6 +145,8 @@
     "teacherLoading": "Your teacher is getting ready…",
     "showLiveCaption": "Show live captions",
     "showLiveCaptionHelp": "Show live words from you and your teacher",
+    "allowTeacherInterrupt": "Allow interrupting the teacher",
+    "allowTeacherInterruptHelp": "When off, new speech and messages wait until the teacher finishes.",
     "connection": "Connection",
     "connected": "Connected",
     "connectionUnavailable": "Unavailable",

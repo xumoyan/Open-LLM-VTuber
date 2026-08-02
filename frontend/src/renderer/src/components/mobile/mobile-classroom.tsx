@@ -188,13 +188,14 @@ function ClassroomComposer(): JSX.Element {
   const { t } = useTranslation();
   const { wsState } = useWebSocket();
   const { aiState, setAiState } = useAiState();
-  const { micError } = useVAD();
+  const { micError, allowInterrupt } = useVAD();
   const { inputText, setInputText, handleSend, handleKeyPress, handleCompositionStart, handleCompositionEnd } = useTextInput();
   const { handleMicToggle, micOn } = useMicToggle();
   const { interrupt } = useInterrupt();
   const ready = wsState === 'OPEN' && aiState !== 'loading';
   const hasText = Boolean(inputText.trim());
   const answering = aiState === 'thinking-speaking';
+  const answerLocked = answering && !allowInterrupt;
 
   return (
     <Box
@@ -231,7 +232,7 @@ function ClassroomComposer(): JSX.Element {
           minH="48px"
           maxH="88px"
           resize="none"
-          disabled={!ready}
+          disabled={!ready || answerLocked}
           bg="blackAlpha.700"
           borderColor="whiteAlpha.300"
           borderRadius="2xl"
@@ -251,14 +252,14 @@ function ClassroomComposer(): JSX.Element {
             h="48px"
             borderRadius="full"
             colorPalette="purple"
-            disabled={!ready}
+            disabled={!ready || answerLocked}
             onClick={() => void handleSend()}
           >
             <FiSend />
           </IconButton>
         )}
 
-        {answering && (
+        {answering && allowInterrupt && (
           <IconButton
             aria-label={t('mobile.stopAnswer')}
             minW="48px"
@@ -279,7 +280,7 @@ function ClassroomComposer(): JSX.Element {
           borderRadius="full"
           bg={micOn ? 'red.500' : 'purple.500'}
           color="white"
-          disabled={!ready}
+          disabled={!ready || (answerLocked && !micOn)}
           className={micOn ? 'mobile-mic-pulse' : undefined}
           onClick={() => void handleMicToggle()}
         >

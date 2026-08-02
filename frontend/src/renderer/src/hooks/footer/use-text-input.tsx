@@ -13,7 +13,7 @@ export function useTextInput() {
   const { aiState } = useAiState();
   const { interrupt } = useInterrupt();
   const { appendHumanMessage } = useChatHistory();
-  const { stopMic, autoStopMic } = useVAD();
+  const { stopMic, autoStopMic, allowInterrupt } = useVAD();
   const { captureAllMedia } = useMediaCapture();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -23,6 +23,7 @@ export function useTextInput() {
   const handleSend = async () => {
     if (!inputText.trim() || !wsContext) return;
     if (aiState === 'thinking-speaking') {
+      if (!allowInterrupt) return;
       interrupt();
     }
 

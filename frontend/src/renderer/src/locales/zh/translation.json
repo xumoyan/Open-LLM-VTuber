@@ -142,6 +142,8 @@
     "teacherLoading": "老师准备中…",
     "showLiveCaption": "显示实时字幕",
     "showLiveCaptionHelp": "显示老师和你的实时文字",
+    "allowTeacherInterrupt": "允许打断老师回答",
+    "allowTeacherInterruptHelp": "关闭后，老师回答期间不会接收新的语音或消息。",
     "connection": "网络连接",
     "connected": "已连接",
     "connectionUnavailable": "暂时不可用",
