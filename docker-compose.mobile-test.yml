@@ -13,6 +13,7 @@ services:
       - "18081:12393"
     volumes:
       - ./conf.yaml:/app/conf/conf.yaml:ro
+      - ./characters:/app/conf/characters:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:12393/healthz"]
