@@ -22,7 +22,7 @@ function statusText(wsState: string, aiState: string, t: (key: string) => string
   return t(`mobile.status.${aiState}`);
 }
 
-function StatusPill(): JSX.Element {
+function StatusPill({ onOpenCharacterPicker }: { onOpenCharacterPicker: () => void }): JSX.Element {
   const { t } = useTranslation();
   const { wsState, reconnect } = useWebSocket();
   const { aiState } = useAiState();
@@ -31,7 +31,7 @@ function StatusPill(): JSX.Element {
 
   return (
     <Button
-      aria-label={offline ? t('mobile.reconnect') : t('mobile.classroomStatus')}
+      aria-label={offline ? t('mobile.reconnect') : t('mobile.switchTeacher')}
       flex="1"
       minW="0"
       minH="44px"
@@ -42,7 +42,7 @@ function StatusPill(): JSX.Element {
       fontSize="sm"
       fontWeight="medium"
       _hover={{ bg: 'blackAlpha.700' }}
-      onClick={offline ? reconnect : undefined}
+      onClick={offline ? reconnect : onOpenCharacterPicker}
     >
       <Box
         boxSize="8px"
@@ -316,7 +316,7 @@ export function MobileClassroom(): JSX.Element {
         justify="space-between"
         pointerEvents="auto"
       >
-        <StatusPill />
+        <StatusPill onOpenCharacterPicker={() => setSettingsOpen(true)} />
         <IconButton
           aria-label={t('mobile.openSettings')}
           minW="48px"

@@ -69,6 +69,8 @@ export function MobileSettingsSheet({ open, onClose }: MobileSettingsSheetProps)
                 minH="48px"
                 variant={config.name === confName ? 'solid' : 'outline'}
                 colorPalette={config.name === confName ? 'purple' : 'gray'}
+                color={config.name === confName ? 'white' : 'whiteAlpha.900'}
+                borderColor={config.name === confName ? undefined : 'whiteAlpha.400'}
                 onClick={() => {
                   switchCharacter(config.filename);
                   onClose();

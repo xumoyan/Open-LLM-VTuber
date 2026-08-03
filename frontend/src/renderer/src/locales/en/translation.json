@@ -138,6 +138,7 @@
   },
   "mobile": {
     "classroomStatus": "Classroom status",
+    "switchTeacher": "Switch teacher",
     "openSettings": "Open classroom settings",
     "closeSettings": "Close classroom settings",
     "settingsTitle": "Classroom settings",

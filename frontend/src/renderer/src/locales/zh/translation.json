@@ -135,6 +135,7 @@
   },
   "mobile": {
     "classroomStatus": "课堂状态",
+    "switchTeacher": "切换老师",
     "openSettings": "打开课堂设置",
     "closeSettings": "关闭课堂设置",
     "settingsTitle": "课堂设置",
