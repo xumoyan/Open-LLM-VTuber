@@ -249,6 +249,7 @@ class ServiceContext:
             self.system_prompt = build_qwen_instructions(
                 self.character_config.persona_prompt,
                 self.character_config.teaching_session,
+                self.character_config.avatar_renderer,
             )
             logger.debug(
                 "Loaded realtime service context for {} ({})",
@@ -312,6 +313,7 @@ class ServiceContext:
             self.system_prompt = build_qwen_instructions(
                 self.character_config.persona_prompt,
                 self.character_config.teaching_session,
+                self.character_config.avatar_renderer,
             )
             logger.info(
                 "Realtime voice enabled; skipping local ASR, Agent, TTS, VAD, translator, and MCP."

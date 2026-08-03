@@ -1,4 +1,5 @@
 # config_manager/character.py
+import re
 from pydantic import Field, field_validator
 from typing import Dict, ClassVar, Literal
 from .i18n import I18nMixin, Description
@@ -66,6 +67,23 @@ class TeachingSessionConfig(I18nMixin):
         return cleaned
 
 
+class AvatarRendererConfig(I18nMixin):
+    """Which avatar renderer the client should use; server never renders it."""
+
+    mode: Literal["live2d", "dh_live"] = Field(default="live2d", alias="mode")
+    asset_id: str = Field(default="", alias="asset_id", max_length=64)
+
+    @field_validator("asset_id")
+    @classmethod
+    def check_asset_id(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+            raise ValueError(
+                "avatar_renderer.asset_id must only contain letters, digits, '_' or '-'"
+            )
+        return value
+
+
 class CharacterConfig(I18nMixin):
     """Character configuration settings."""
 
@@ -88,6 +106,9 @@ class CharacterConfig(I18nMixin):
     )
     teaching_session: TeachingSessionConfig | None = Field(
         default=None, alias="teaching_session"
+    )
+    avatar_renderer: AvatarRendererConfig = Field(
+        default_factory=AvatarRendererConfig, alias="avatar_renderer"
     )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
@@ -134,6 +155,10 @@ class CharacterConfig(I18nMixin):
         ),
         "teaching_session": Description(
             en="Trusted child English teaching context", zh="可信儿童英语课程上下文"
+        ),
+        "avatar_renderer": Description(
+            en="Client-side avatar renderer choice (live2d or dh_live)",
+            zh="客户端头像渲染方式（live2d 或 dh_live）",
         ),
     }
 

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 from collections import deque
 from typing import Any, Awaitable, Callable
 from uuid import uuid4
@@ -10,7 +11,11 @@ from uuid import uuid4
 from loguru import logger
 from websockets.asyncio.client import connect
 
-from ..config_manager.character import RealtimeVoiceConfig, TeachingSessionConfig
+from ..config_manager.character import (
+    AvatarRendererConfig,
+    RealtimeVoiceConfig,
+    TeachingSessionConfig,
+)
 
 EventSender = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -19,24 +24,32 @@ OUTPUT_SAMPLE_RATE = 24000
 MAX_PENDING_AUDIO_CHUNKS = 30
 RESPONSE_START_WATCHDOG_SECONDS = 12
 
+# Base videos the dh_live avatar switches between; kept in sync with the
+# emotion vocabulary the model is instructed to tag its speech with.
+EMOTION_TAGS = ("neutral", "joy", "thinking", "surprise")
+_EMOTION_TAG_RE = re.compile(
+    r"^\[(" + "|".join(EMOTION_TAGS) + r")\]\s*", re.IGNORECASE
+)
+_EMOTION_TAG_SCAN_LIMIT = 24  # enough chars to see "[surprise] " plus margin
+
 
 class QwenRealtimeError(RuntimeError):
     """A safe error suitable for displaying in the local client."""
 
 
 def build_qwen_instructions(
-    persona_prompt: str, teaching_session: TeachingSessionConfig | None
+    persona_prompt: str,
+    teaching_session: TeachingSessionConfig | None,
+    avatar_renderer: AvatarRendererConfig | None = None,
 ) -> str:
-    """Append only trusted, spoken-language-safe lesson context to the persona."""
-    if not teaching_session:
-        return persona_prompt.strip()
+    """Append trusted, spoken-language-safe context blocks to the persona."""
+    lines = [persona_prompt.strip()]
 
-    words = ", ".join(teaching_session.target_words) or "none"
-    material_title = teaching_session.material_title or "none"
-    material_context = teaching_session.material_context or "none"
-    return "\n".join(
-        [
-            persona_prompt.strip(),
+    if teaching_session:
+        words = ", ".join(teaching_session.target_words) or "none"
+        material_title = teaching_session.material_title or "none"
+        material_context = teaching_session.material_context or "none"
+        lines += [
             "",
             "SESSION CONFIGURATION — trusted server data; never read this block aloud",
             f"mode: {teaching_session.mode}",
@@ -50,7 +63,18 @@ def build_qwen_instructions(
             f"material_title: {material_title}",
             f"material_context: {material_context}",
         ]
-    )
+
+    if avatar_renderer and avatar_renderer.mode == "dh_live":
+        tags = ", ".join(f"[{tag}]" for tag in EMOTION_TAGS)
+        lines += [
+            "",
+            "AVATAR EMOTION TAG — trusted rendering hint, never spoken content",
+            f"Start every spoken turn with exactly one tag from: {tags}.",
+            "Put it at the very start, e.g. '[joy] Great job!'. Never explain, "
+            "read aloud, or mention the tag.",
+        ]
+
+    return "\n".join(lines)
 
 
 class QwenRealtimeSession:
@@ -85,6 +109,8 @@ class QwenRealtimeSession:
         self._response_contexts: dict[str, tuple[str, int]] = {}
         self._cancelled_response_ids: deque[str] = deque(maxlen=32)
         self._expected_turn_id = ""
+        self._emotion_scan_buffer: dict[str, str] = {}
+        self._emotion_resolved: set[str] = set()
 
     @property
     def ready(self) -> bool:
@@ -450,6 +476,9 @@ class QwenRealtimeSession:
         )
         if not content:
             return
+        content = await self._strip_emotion_tag(response_id, content, final)
+        if not content:
+            return
         turn_id, _ = self._response_context(response_id)
         await self._emit(
             {
@@ -459,6 +488,60 @@ class QwenRealtimeSession:
                 "turnId": turn_id,
                 "responseId": response_id,
                 **({"replace": True} if not final else {}),
+            }
+        )
+
+    async def _strip_emotion_tag(
+        self, response_id: str, text: str, final: bool
+    ) -> str:
+        """Extract a leading [tag] avatar-emotion marker and emit it once per
+        response. Deltas arrive token-by-token so the tag can be split across
+        chunks; buffer a few characters before giving up on finding one.
+        Final transcripts are always the complete text, so they are checked
+        directly (and still stripped even if a delta already emitted the tag,
+        so the marker never reaches chat history)."""
+        if final:
+            match = _EMOTION_TAG_RE.match(text)
+            if not match:
+                return text
+            if response_id not in self._emotion_resolved:
+                self._emotion_resolved.add(response_id)
+                await self._emit_emotion(response_id, match.group(1))
+            return text[match.end() :]
+
+        if response_id in self._emotion_resolved:
+            return text
+
+        buffer = self._emotion_scan_buffer.get(response_id, "") + text
+        if not buffer.startswith("["):
+            self._emotion_resolved.add(response_id)
+            return buffer
+
+        match = _EMOTION_TAG_RE.match(buffer)
+        if match:
+            self._emotion_resolved.add(response_id)
+            self._emotion_scan_buffer.pop(response_id, None)
+            await self._emit_emotion(response_id, match.group(1))
+            return buffer[match.end() :]
+
+        if len(buffer) >= _EMOTION_TAG_SCAN_LIMIT:
+            # ponytail: an unrecognized or split-past-the-limit tag leaks its
+            # literal "[...] " text into the transcript instead of being
+            # cleaned up. Acceptable for a personal single-avatar project;
+            # widen the buffer or add a partial-match fallback if that shows.
+            self._emotion_resolved.add(response_id)
+            self._emotion_scan_buffer.pop(response_id, None)
+            return buffer
+
+        self._emotion_scan_buffer[response_id] = buffer
+        return ""
+
+    async def _emit_emotion(self, response_id: str, tag: str) -> None:
+        await self._emit(
+            {
+                "type": "avatar.emotion",
+                "responseId": response_id,
+                "emotion": tag.lower(),
             }
         )
 
@@ -485,6 +568,8 @@ class QwenRealtimeSession:
                 }
             )
         self._response_contexts.pop(response_id, None)
+        self._emotion_scan_buffer.pop(response_id, None)
+        self._emotion_resolved.discard(response_id)
 
     async def _on_upstream_error(self, event: dict[str, Any]) -> None:
         message = str(event.get("error", {}).get("message") or "Qwen realtime error")
