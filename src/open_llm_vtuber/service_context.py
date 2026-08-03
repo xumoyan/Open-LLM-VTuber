@@ -590,6 +590,7 @@ class ServiceContext:
                             "model_info": self.live2d_model.model_info,
                             "conf_name": self.character_config.conf_name,
                             "conf_uid": self.character_config.conf_uid,
+                            "avatar_renderer": self.character_config.avatar_renderer.model_dump(),
                         }
                     )
                 )

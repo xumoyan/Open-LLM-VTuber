@@ -10,6 +10,15 @@ type RealtimeResponse = {
   started: boolean
 };
 
+/** Separate from RealtimePlaybackCallbacks (which setRealtimeCallbacks replaces
+ * wholesale) so the dh_live avatar can observe PCM/clear/emotion without
+ * clobbering websocket-handler's onStarted/onEnded/onCancelled registration. */
+type AvatarObserver = {
+  onPcm?: (pcm: Float32Array, sampleRate: number, responseId: string) => void
+  onClear?: (reason: string) => void
+  onEmotion?: (emotion: string, responseId: string) => void
+};
+
 /** Shared audio owner for the legacy WAV player and Qwen PCM stream player. */
 class AudioManager {
   private currentAudio: HTMLAudioElement | null = null;
@@ -29,6 +38,8 @@ class AudioManager {
   private activeRealtimeResponseId = '';
 
   private realtimeCallbacks: RealtimePlaybackCallbacks = {};
+
+  private avatarObserver: AvatarObserver = {};
 
   private rmsFrame: number | null = null;
 
@@ -76,6 +87,14 @@ class AudioManager {
     this.realtimeCallbacks = callbacks;
   }
 
+  setAvatarObserver(observer: AvatarObserver) {
+    this.avatarObserver = observer;
+  }
+
+  emitEmotion(emotion: string, responseId: string) {
+    this.avatarObserver.onEmotion?.(emotion, responseId);
+  }
+
   unlockRealtimeAudio() {
     return this.ensureRealtimeContext();
   }
@@ -102,6 +121,7 @@ class AudioManager {
 
     const pcm = this.decodePcm16(audioBase64);
     if (!pcm.length) return;
+    this.avatarObserver.onPcm?.(pcm, sampleRate, responseId);
     const buffer = context.createBuffer(1, pcm.length, sampleRate);
     buffer.copyToChannel(pcm, 0);
 
@@ -151,6 +171,7 @@ class AudioManager {
       });
       this.realtimeCallbacks.onCancelled?.(responseId, reason);
     });
+    this.avatarObserver.onClear?.(reason);
     this.stopRmsLoop();
   }
 

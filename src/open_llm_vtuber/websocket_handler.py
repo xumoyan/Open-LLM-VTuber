@@ -189,6 +189,7 @@ class WebSocketHandler:
                     "conf_name": session_service_context.character_config.conf_name,
                     "conf_uid": session_service_context.character_config.conf_uid,
                     "client_uid": client_uid,
+                    "avatar_renderer": session_service_context.character_config.avatar_renderer.model_dump(),
                 }
             )
         )
@@ -820,6 +821,7 @@ class WebSocketHandler:
                     "conf_name": context.character_config.conf_name,
                     "conf_uid": context.character_config.conf_uid,
                     "client_uid": client_uid,
+                    "avatar_renderer": context.character_config.avatar_renderer.model_dump(),
                 }
             )
         )

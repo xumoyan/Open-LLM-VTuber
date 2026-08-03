@@ -12,6 +12,15 @@ export interface ConfigFile {
 }
 
 /**
+ * Which avatar renderer the client should use for the current character.
+ * Mirrors the backend's AvatarRendererConfig (config_manager/character.py).
+ */
+export interface AvatarRendererState {
+  mode: 'live2d' | 'dh_live';
+  assetId: string;
+}
+
+/**
  * Character configuration context state interface
  * @interface CharacterConfigState
  */
@@ -19,9 +28,11 @@ interface CharacterConfigState {
   confName: string;
   confUid: string;
   configFiles: ConfigFile[];
+  avatarRenderer: AvatarRendererState;
   setConfName: (name: string) => void;
   setConfUid: (uid: string) => void;
   setConfigFiles: (files: ConfigFile[]) => void;
+  setAvatarRenderer: (renderer: AvatarRendererState) => void;
   getFilenameByName: (name: string) => string | undefined;
 }
 
@@ -32,6 +43,7 @@ const DEFAULT_CONFIG = {
   confName: '',
   confUid: '',
   configFiles: [] as ConfigFile[],
+  avatarRenderer: { mode: 'live2d', assetId: '' } as AvatarRendererState,
 };
 
 /**
@@ -48,6 +60,9 @@ export function CharacterConfigProvider({ children }: { children: React.ReactNod
   const [confName, setConfName] = useState<string>(DEFAULT_CONFIG.confName);
   const [confUid, setConfUid] = useState<string>(DEFAULT_CONFIG.confUid);
   const [configFiles, setConfigFiles] = useState<ConfigFile[]>(DEFAULT_CONFIG.configFiles);
+  const [avatarRenderer, setAvatarRenderer] = useState<AvatarRendererState>(
+    DEFAULT_CONFIG.avatarRenderer,
+  );
 
   const getFilenameByName = useCallback(
     (name: string) => configFiles.find((config) => config.name === name)?.filename,
@@ -60,12 +75,14 @@ export function CharacterConfigProvider({ children }: { children: React.ReactNod
       confName,
       confUid,
       configFiles,
+      avatarRenderer,
       setConfName,
       setConfUid,
       setConfigFiles,
+      setAvatarRenderer,
       getFilenameByName,
     }),
-    [confName, confUid, configFiles, getFilenameByName],
+    [confName, confUid, configFiles, avatarRenderer, getFilenameByName],
   );
 
   useEffect(() => {

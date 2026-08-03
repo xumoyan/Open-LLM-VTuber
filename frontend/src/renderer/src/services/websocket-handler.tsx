@@ -40,7 +40,9 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
   } = useChatHistory();
   const { addAudioTask } = useAudioTask();
   const bgUrlContext = useBgUrl();
-  const { confUid, setConfName, setConfUid, setConfigFiles } = useConfig();
+  const {
+    confUid, setConfName, setConfUid, setConfigFiles, setAvatarRenderer,
+  } = useConfig();
   const [pendingModelInfo, setPendingModelInfo] = useState<ModelInfo | undefined>(undefined);
   const { setSelfUid, setGroupMembers, setIsOwner } = useGroup();
   const { startMic, stopMic, autoStartMicOnConvEnd } = useVAD();
@@ -130,6 +132,12 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
         if (message.client_uid) {
           setSelfUid(message.client_uid);
         }
+        if (message.avatar_renderer) {
+          setAvatarRenderer({
+            mode: message.avatar_renderer.mode === 'dh_live' ? 'dh_live' : 'live2d',
+            assetId: message.avatar_renderer.asset_id || '',
+          });
+        }
         if (message.model_info?.url) {
           const modelInfo = { ...message.model_info };
           if (!modelInfo.url.startsWith('http')) modelInfo.url = baseUrl + modelInfo.url;
@@ -176,6 +184,9 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
         break;
       case 'response.interrupted':
         audioManager.clearRealtime('response_interrupted');
+        break;
+      case 'avatar.emotion':
+        if (message.emotion) audioManager.emitEmotion(message.emotion, message.responseId || '');
         break;
       case 'transcript.delta':
         if (message.content) setSubtitleText(message.content);
@@ -357,7 +368,7 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
       default:
         console.warn('Unknown message type:', message.type);
     }
-  }, [aiState, addAudioTask, appendAIMessage, appendHumanMessage, baseUrl, bgUrlContext, setAiState, setConfName, setConfUid, setConfigFiles, setCurrentHistoryUid, setHistoryList, setMessages, setModelInfo, setSubtitleText, startMic, stopMic, setSelfUid, setGroupMembers, setIsOwner, backendSynthComplete, setBackendSynthComplete, clearResponse, handleControlMessage, appendOrUpdateToolCallMessage, interrupt, setBrowserViewData, setForceNewMessage, t]);
+  }, [aiState, addAudioTask, appendAIMessage, appendHumanMessage, baseUrl, bgUrlContext, setAiState, setConfName, setConfUid, setConfigFiles, setAvatarRenderer, setCurrentHistoryUid, setHistoryList, setMessages, setModelInfo, setSubtitleText, startMic, stopMic, setSelfUid, setGroupMembers, setIsOwner, backendSynthComplete, setBackendSynthComplete, clearResponse, handleControlMessage, appendOrUpdateToolCallMessage, interrupt, setBrowserViewData, setForceNewMessage, t]);
 
   useEffect(() => {
     wsService.connect(wsUrl);

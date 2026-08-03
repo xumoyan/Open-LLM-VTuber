@@ -78,6 +78,8 @@ export interface MessageEvent {
   model_info?: ModelInfo;
   conf_name?: string;
   conf_uid?: string;
+  avatar_renderer?: { mode?: string; asset_id?: string };
+  emotion?: string;
   uids?: string[];
   messages?: Message[];
   history_uid?: string;

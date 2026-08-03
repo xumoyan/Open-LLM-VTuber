@@ -17,6 +17,8 @@ import { CharacterConfigProvider } from "./context/character-config-context";
 import { Toaster } from "./components/ui/toaster";
 import { VADProvider } from "./context/vad-context";
 import { Live2D } from "./components/canvas/live2d";
+import { DhLiveAvatar } from "./components/canvas/dh-live-avatar";
+import { useConfig } from "./context/character-config-context";
 import TitleBar from "./components/electron/title-bar";
 import { InputSubtitle } from "./components/electron/input-subtitle";
 import { ProactiveSpeakProvider } from "./context/proactive-speak-context";
@@ -41,6 +43,8 @@ function AppContent(): JSX.Element {
   const { mode } = useMode();
   const isElectron = window.api !== undefined;
   const live2dContainerRef = useRef<HTMLDivElement>(null);
+  const { avatarRenderer } = useConfig();
+  const isDhLive = avatarRenderer.mode === 'dh_live';
 
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
@@ -92,7 +96,9 @@ function AppContent(): JSX.Element {
           <Background />
         </Box>
         <Box position="absolute" inset="0" zIndex={1}>
-          <Live2D showSidebar={false} />
+          {isDhLive
+            ? <DhLiveAvatar assetId={avatarRenderer.assetId} />
+            : <Live2D showSidebar={false} />}
         </Box>
         <MobileClassroom />
       </Box>
@@ -109,7 +115,9 @@ function AppContent(): JSX.Element {
           ? getResponsiveLive2DWindowStyle(showSidebar)
           : live2dPetStyle)}
       >
-        <Live2D />
+        {isDhLive
+          ? <DhLiveAvatar assetId={avatarRenderer.assetId} />
+          : <Live2D />}
       </Box>
 
       {/* Conditional Rendering of Window UI */}
