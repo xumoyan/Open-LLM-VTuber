@@ -12,8 +12,12 @@ services:
     ports:
       - "18081:12393"
     volumes:
-      - ./conf.yaml:/app/conf/conf.yaml:ro
-      - ./characters:/app/conf/characters:ro
+      # WORKDIR is /app and run_server.py reads "conf.yaml"/"characters"
+      # relative to it, not /app/conf/*, so those were never actually
+      # live-mounted -- the container only ever saw whatever was baked in
+      # at the last --build.
+      - ./conf.yaml:/app/conf.yaml:ro
+      - ./characters:/app/characters:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:12393/healthz"]
