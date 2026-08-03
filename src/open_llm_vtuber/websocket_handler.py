@@ -632,8 +632,8 @@ class WebSocketHandler:
         """Handle triggers that start a conversation"""
         context = self.client_contexts[client_uid]
         if context.is_realtime:
-            if data.get("type") == "text-input" and context.realtime_session:
-                await context.realtime_session.send_text(str(data.get("text") or ""))
+            if data.get("type") == "text-input":
+                await self._send_realtime_text(client_uid, str(data.get("text") or ""))
             return
         await handle_conversation_trigger(
             msg_type=data.get("type", ""),
@@ -724,9 +724,20 @@ class WebSocketHandler:
     async def _handle_realtime_text(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
-        context = self.client_contexts[client_uid]
-        if context.is_realtime and context.realtime_session:
-            await context.realtime_session.send_text(str(data.get("text") or ""))
+        await self._send_realtime_text(client_uid, str(data.get("text") or ""))
+
+    async def _send_realtime_text(self, client_uid: str, text: str) -> None:
+        """Send text to the Qwen realtime session, starting it first if the
+        client never activated the mic (e.g. mobile, where auto-starting the
+        mic on connect is skipped -- see 'start-mic' handling on the
+        frontend). Without this, text-only input silently went nowhere."""
+        context = self.client_contexts.get(client_uid)
+        if not context or not context.is_realtime:
+            return
+        if not context.realtime_session:
+            await self._start_realtime_session(client_uid)
+        if context.realtime_session:
+            await context.realtime_session.send_text(text)
 
     async def _handle_fetch_backgrounds(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
