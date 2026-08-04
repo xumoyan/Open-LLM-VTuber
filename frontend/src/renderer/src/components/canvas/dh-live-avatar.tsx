@@ -142,6 +142,25 @@ export function DhLiveAvatar({ assetId }: { assetId?: string }) {
         height={184}
         style={{ position: 'absolute', left: -9999, top: -9999, width: 184, height: 184 }}
       />
+      {/* ponytail: the "MatesX" watermark is burned into test_avatar's video
+          pixels, not a layer we control, so this masks the fixed screen
+          position it happens to sit at for THIS one placeholder clip. It
+          won't line up for any other asset/aspect ratio -- drop it once
+          real (unwatermarked) footage replaces the demo asset. */}
+      {(assetId || 'test_avatar') === 'test_avatar' && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '45%',
+            top: '47%',
+            width: '18%',
+            height: '3.4%',
+            background: '#28374d',
+            zIndex: 2,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
       <div id="screen" />
       <div id="screen2" style={{ display: 'none' }} />
       <div
