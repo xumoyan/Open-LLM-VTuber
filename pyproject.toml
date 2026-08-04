@@ -50,6 +50,18 @@ bilibili = [
     "yarl>=1.12.0,<2.0"
 ]
 
+# Linux (Docker) builds don't have a GPU, so pull the CPU-only torch wheel
+# instead of the default CUDA one (~4GB of nvidia-* deps).
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.pixi.project]
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64"]
