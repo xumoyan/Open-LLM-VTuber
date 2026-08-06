@@ -6,9 +6,9 @@
     "build:web": "VITE_MOBILE_APP=1 npm --prefix ../frontend run build:web",
     "sync": "npm run build:web && cap sync",
     "presync:android-ip-test": "node -e \"if (!process.env.MOBILE_ACCESS_TOKEN) throw new Error('Set MOBILE_ACCESS_TOKEN before building the private test app')\"",
-    "sync:android-ip-test": "VITE_MOBILE_APP=1 VITE_BACKEND_URL=http://221.216.142.92:18081 VITE_MOBILE_TEST_TOKEN=$MOBILE_ACCESS_TOKEN npm --prefix ../frontend run build:web && MOBILE_TEST_IP=1 cap sync android",
+    "sync:android-ip-test": "VITE_MOBILE_APP=1 VITE_BACKEND_URL=http://221.216.142.88:18081 VITE_MOBILE_TEST_TOKEN=$MOBILE_ACCESS_TOKEN npm --prefix ../frontend run build:web && MOBILE_TEST_IP=1 cap sync android",
     "presync:ios-ip-test": "node -e \"if (!process.env.MOBILE_ACCESS_TOKEN) throw new Error('Set MOBILE_ACCESS_TOKEN before building the private test app')\"",
-    "sync:ios-ip-test": "VITE_MOBILE_APP=1 VITE_BACKEND_URL=http://221.216.142.92:18081 VITE_MOBILE_TEST_TOKEN=$MOBILE_ACCESS_TOKEN npm --prefix ../frontend run build:web && cap sync ios",
+    "sync:ios-ip-test": "VITE_MOBILE_APP=1 VITE_BACKEND_URL=http://221.216.142.88:18081 VITE_MOBILE_TEST_TOKEN=$MOBILE_ACCESS_TOKEN npm --prefix ../frontend run build:web && cap sync ios",
     "open:android": "cap open android",
     "open:ios": "cap open ios"
   },
