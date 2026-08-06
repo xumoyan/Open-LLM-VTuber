@@ -3,7 +3,9 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiMic, FiMicOff, FiSend, FiSettings, FiStopCircle } from 'react-icons/fi';
+import {
+  FiChevronDown, FiMic, FiMicOff, FiRefreshCw, FiSend, FiSettings, FiStopCircle,
+} from 'react-icons/fi';
 import { useAiState } from '@/context/ai-state-context';
 import { useChatHistory } from '@/context/chat-history-context';
 import { useConfig } from '@/context/character-config-context';
@@ -22,35 +24,70 @@ function statusText(wsState: string, aiState: string, t: (key: string) => string
   return t(`mobile.status.${aiState}`);
 }
 
-function StatusPill(): JSX.Element {
+function TeacherSwitcher({ onOpenCharacterPicker }: { onOpenCharacterPicker: () => void }): JSX.Element {
   const { t } = useTranslation();
   const { wsState, reconnect } = useWebSocket();
   const { aiState } = useAiState();
   const { confName } = useConfig();
   const offline = wsState === 'CLOSED' || wsState === 'CLOSING';
+  const connecting = wsState === 'CONNECTING';
+  const statusColor = offline ? 'red.400' : connecting ? 'yellow.300' : 'green.300';
+  const initial = (confName || 'AI').trim().charAt(0).toUpperCase();
 
   return (
     <Button
-      aria-label={offline ? t('mobile.reconnect') : t('mobile.classroomStatus')}
+      aria-label={offline ? t('mobile.reconnect') : t('mobile.switchTeacher')}
       flex="1"
       minW="0"
-      minH="44px"
-      px="3"
+      minH="52px"
+      pl="1.5"
+      pr="3"
       borderRadius="full"
       bg="blackAlpha.600"
+      border="1px solid"
+      borderColor="whiteAlpha.200"
       color="white"
-      fontSize="sm"
-      fontWeight="medium"
       _hover={{ bg: 'blackAlpha.700' }}
-      onClick={offline ? reconnect : undefined}
+      _active={{ bg: 'blackAlpha.800' }}
+      onClick={offline ? reconnect : onOpenCharacterPicker}
     >
-      <Box
-        boxSize="8px"
-        borderRadius="full"
-        bg={offline ? 'red.400' : wsState === 'CONNECTING' ? 'yellow.300' : 'green.300'}
-        flexShrink={0}
-      />
-      <Text truncate ml="2">{statusText(wsState, aiState, t)}{confName ? ` · ${confName}` : ''}</Text>
+      <Flex align="center" gap="2.5" minW="0" flex="1">
+        <Box position="relative" flexShrink={0}>
+          <Flex
+            boxSize="34px"
+            borderRadius="full"
+            bg="purple.500"
+            align="center"
+            justify="center"
+            fontSize="sm"
+            fontWeight="bold"
+            color="white"
+          >
+            {initial}
+          </Flex>
+          <Box
+            position="absolute"
+            right="-1px"
+            bottom="-1px"
+            boxSize="12px"
+            borderRadius="full"
+            bg={statusColor}
+            border="2px solid"
+            borderColor="#14161c"
+          />
+        </Box>
+        <Box minW="0" textAlign="left">
+          <Text truncate fontSize="sm" fontWeight="semibold" lineHeight="1.25">
+            {confName || t('mobile.teacherLoading')}
+          </Text>
+          <Text truncate fontSize="xs" color="whiteAlpha.700" lineHeight="1.3">
+            {statusText(wsState, aiState, t)}
+          </Text>
+        </Box>
+      </Flex>
+      <Box flexShrink={0} color="whiteAlpha.700">
+        {offline ? <FiRefreshCw size={16} /> : <FiChevronDown size={18} />}
+      </Box>
     </Button>
   );
 }
@@ -308,26 +345,31 @@ export function MobileClassroom(): JSX.Element {
     >
       <Flex
         position="absolute"
-        top="env(safe-area-inset-top)"
+        top="calc(8px + env(safe-area-inset-top))"
         left="3"
-        right="2"
+        right="3"
         zIndex={10}
         align="center"
+        gap="2"
         justify="space-between"
         pointerEvents="auto"
       >
-        <StatusPill />
+        <TeacherSwitcher onOpenCharacterPicker={() => setSettingsOpen(true)} />
         <IconButton
           aria-label={t('mobile.openSettings')}
           minW="48px"
-          h="48px"
+          h="52px"
+          flexShrink={0}
           borderRadius="full"
           bg="blackAlpha.600"
+          border="1px solid"
+          borderColor="whiteAlpha.200"
           color="white"
           _hover={{ bg: 'blackAlpha.700' }}
+          _active={{ bg: 'blackAlpha.800' }}
           onClick={() => setSettingsOpen(true)}
         >
-          <FiSettings size="22" />
+          <FiSettings size="20" />
         </IconButton>
       </Flex>
 
