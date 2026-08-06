@@ -79,6 +79,17 @@ export function DhLiveAvatar({ assetId }: { assetId?: string }) {
 
     boot();
 
+    // iOS/WKWebView can silently block MiniLive2.js's autoplay call for
+    // #background_video on cold launch (no user gesture yet). Retry once
+    // a gesture happens -- play() inside a gesture handler is allowed even
+    // when the earlier unprompted call was rejected.
+    const retryBackgroundVideoPlay = () => {
+      const bgVideo = document.getElementById('background_video') as HTMLVideoElement | null;
+      if (bgVideo?.paused) bgVideo.play().catch(() => {});
+    };
+    document.addEventListener('touchstart', retryBackgroundVideoPlay, { once: true, passive: true });
+    document.addEventListener('pointerdown', retryBackgroundVideoPlay, { once: true });
+
     audioManager.setAvatarObserver({
       onPcm: (pcm, sampleRate) => {
         const { Module } = window;
@@ -110,6 +121,8 @@ export function DhLiveAvatar({ assetId }: { assetId?: string }) {
 
     return () => {
       cancelled = true;
+      document.removeEventListener('touchstart', retryBackgroundVideoPlay);
+      document.removeEventListener('pointerdown', retryBackgroundVideoPlay);
       audioManager.setAvatarObserver({});
     };
   }, [assetId]);

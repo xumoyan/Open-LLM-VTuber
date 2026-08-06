@@ -43,6 +43,7 @@ class VideoProcessor {
     async init(videoUrl, gzipUrl) {
         if (this.video) {
             this.video.pause();
+            this.video.remove();
             this.video.src = '';
             this.video = null;
         }
@@ -52,6 +53,13 @@ class VideoProcessor {
         this.video.loop = true;
         this.video.muted = true;
         this.video.playsInline = true;
+        // iOS WebKit only reliably decodes frames (for drawImage) from
+        // <video> elements attached to the document -- an off-DOM video
+        // created via createElement never advances past its first frame,
+        // which left drawImage() painting nothing here and only the WASM
+        // mouth overlay visible on real iPhones.
+        this.video.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
+        document.body.appendChild(this.video);
 
         await new Promise((resolve, reject) => {
             this.video.onloadedmetadata = () => {
@@ -133,9 +141,15 @@ class VideoProcessor {
     }
 
     play() {
-        if (this.video) {
-            this.video.play();
-        }
+        if (!this.video) return;
+        this.video.play().catch(() => {
+            // iOS can block this unprompted play() call. Retry once on the
+            // next user touch, where play() inside the gesture handler is
+            // allowed even though the earlier call was rejected.
+            const retry = () => this.video && this.video.play().catch(() => {});
+            document.addEventListener('touchstart', retry, { once: true, passive: true });
+            document.addEventListener('pointerdown', retry, { once: true });
+        });
     }
 
     pause() {
