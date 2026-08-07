@@ -1,10 +1,12 @@
 import {
   Box, Button, DrawerBody, DrawerFooter, DrawerHeader, DrawerRoot, DrawerTitle, Flex, Text,
 } from '@chakra-ui/react';
-import { ReactNode, useState } from 'react';
+import {
+  ReactNode, useEffect, useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  FiBookOpen, FiCheck, FiMessageCircle, FiRefreshCw, FiUsers, FiWifi, FiWifiOff, FiZap,
+  FiBookOpen, FiCheck, FiMessageCircle, FiMic, FiRefreshCw, FiUsers, FiWifi, FiWifiOff, FiZap,
 } from 'react-icons/fi';
 import { useConfig } from '@/context/character-config-context';
 import { useSidebar } from '@/hooks/sidebar/use-sidebar';
@@ -12,10 +14,14 @@ import { useSwitchCharacter } from '@/hooks/utils/use-switch-character';
 import { useSubtitle } from '@/context/subtitle-context';
 import { useVAD } from '@/context/vad-context';
 import { useWebSocket } from '@/context/websocket-context';
+import { useLocalStorage } from '@/hooks/utils/use-local-storage';
+import { recordVoiceSample } from '@/utils/voiceprint-recorder';
 import {
   DrawerBackdrop, DrawerCloseTrigger, DrawerContent,
 } from '@/components/ui/drawer';
 import { Switch } from '@/components/ui/switch';
+
+const VOICE_SAMPLE_SECONDS = 8;
 
 interface MobileSettingsSheetProps {
   open: boolean;
@@ -159,6 +165,8 @@ export function MobileSettingsSheet({ open, onClose }: MobileSettingsSheetProps)
             </Flex>
           </Box>
 
+          <VoiceLockSection />
+
           <SectionLabel icon={<FiWifi size={14} />}>{t('mobile.connection')}</SectionLabel>
           <Flex
             align="center"
@@ -214,6 +222,82 @@ export function MobileSettingsSheet({ open, onClose }: MobileSettingsSheetProps)
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
+  );
+}
+
+function VoiceLockSection(): JSX.Element {
+  const { t } = useTranslation();
+  const { baseUrl } = useWebSocket();
+  const [deviceId, setDeviceId] = useLocalStorage('voiceprintDeviceId', '');
+  const [voiceprintUrl, setVoiceprintUrl] = useLocalStorage('voiceprintUrl', '');
+  const [status, setStatus] = useState<'idle' | 'recording' | 'uploading' | 'error'>('idle');
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!deviceId) setDeviceId(crypto.randomUUID());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startRecording = async () => {
+    if (!deviceId || status === 'recording' || status === 'uploading') return;
+    setStatus('recording');
+    setElapsed(0);
+    try {
+      const blob = await recordVoiceSample(VOICE_SAMPLE_SECONDS, setElapsed);
+      setStatus('uploading');
+      const formData = new FormData();
+      formData.append('file', blob, 'voiceprint.wav');
+      const response = await fetch(`${baseUrl}/voiceprint/${deviceId}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error(`upload failed: ${response.status}`);
+      const data = await response.json();
+      setVoiceprintUrl(data.url);
+      setStatus('idle');
+    } catch (error) {
+      console.error('[VoiceLock] recording/upload failed', error);
+      setStatus('error');
+    }
+  };
+
+  const label = (() => {
+    if (status === 'recording') {
+      return t('mobile.voiceLockRecording', {
+        elapsed: Math.min(VOICE_SAMPLE_SECONDS, Math.ceil(elapsed)),
+        total: VOICE_SAMPLE_SECONDS,
+      });
+    }
+    if (status === 'uploading') return t('mobile.voiceLockUploading');
+    return voiceprintUrl ? t('mobile.voiceLockReRecord') : t('mobile.voiceLockRecord');
+  })();
+
+  return (
+    <>
+      <SectionLabel icon={<FiMic size={14} />}>{t('mobile.voiceLock')}</SectionLabel>
+      <Box bg="whiteAlpha.50" border="1px solid" borderColor="whiteAlpha.100" borderRadius="xl" mb="6" px="4" py="4">
+        <Text color="whiteAlpha.600" fontSize="xs" mb="3">{t('mobile.voiceLockHelp')}</Text>
+        <Button
+          width="full"
+          minH="48px"
+          borderRadius="xl"
+          fontWeight="medium"
+          colorPalette={voiceprintUrl ? 'gray' : 'purple'}
+          variant={voiceprintUrl ? 'outline' : 'solid'}
+          borderColor={voiceprintUrl ? 'whiteAlpha.300' : undefined}
+          color={voiceprintUrl ? 'white' : undefined}
+          loading={status === 'recording' || status === 'uploading'}
+          disabled={status === 'recording' || status === 'uploading'}
+          onClick={() => void startRecording()}
+        >
+          <FiMic />
+          {label}
+        </Button>
+        {status === 'error' && (
+          <Text color="red.300" fontSize="xs" mt="2">{t('mobile.voiceLockError')}</Text>
+        )}
+      </Box>
+    </>
   );
 }
 

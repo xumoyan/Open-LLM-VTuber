@@ -178,7 +178,12 @@ function ConversationOverlay(): JSX.Element {
               py="2"
               backdropFilter="blur(10px)"
             >
-              {message.content}
+              <Text>{message.content}</Text>
+              {message.translation && (
+                <Text mt="1" fontSize="xs" color="whiteAlpha.700">
+                  {message.translation}
+                </Text>
+              )}
             </Box>
           </Flex>
         ))}

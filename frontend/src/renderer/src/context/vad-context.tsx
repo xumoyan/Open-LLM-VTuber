@@ -286,7 +286,16 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const startMic = useCallback(async () => {
     try {
       void audioManager.unlockRealtimeAudio();
-      sendMessageRef.current({ type: 'connect', inputEnabled: true, outputEnabled: true });
+      let voiceprintUrl: string | undefined;
+      try {
+        const stored = window.localStorage.getItem('voiceprintUrl');
+        voiceprintUrl = stored ? JSON.parse(stored) : undefined;
+      } catch {
+        voiceprintUrl = undefined;
+      }
+      sendMessageRef.current({
+        type: 'connect', inputEnabled: true, outputEnabled: true, voiceprintUrl,
+      });
       const hasLiveInput = streamRef.current?.getAudioTracks()
         .some((track) => track.readyState === 'live');
       if (!vadRef.current || !hasLiveInput) {

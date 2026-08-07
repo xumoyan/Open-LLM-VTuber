@@ -37,6 +37,7 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
     appendHumanMessage,
     appendAIMessage,
     appendOrUpdateToolCallMessage,
+    setLastMessageTranslation,
   } = useChatHistory();
   const { addAudioTask } = useAudioTask();
   const bgUrlContext = useBgUrl();
@@ -189,6 +190,18 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
         break;
       case 'transcript.discard':
         setSubtitleText('');
+        break;
+      case 'voiceprint.status':
+        if (message.state === 'completed') {
+          toaster.create({ title: t('notification.voiceprintReady'), type: 'success', duration: 2500 });
+        } else if (message.state === 'failed') {
+          toaster.create({ title: t('notification.voiceprintFailed'), type: 'warning', duration: 3000 });
+        }
+        break;
+      case 'transcript.translation':
+        if (message.content) {
+          setLastMessageTranslation(message.role === 'user' ? 'human' : 'ai', message.content);
+        }
         break;
       case 'full-text':
         if (message.text) {

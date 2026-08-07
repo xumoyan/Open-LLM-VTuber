@@ -105,7 +105,9 @@
     "newConversation": "New Conversation Started",
     "newChatHistory": "New chat history created",
     "historyDeleteSuccess": "History deleted successfully",
-    "historyDeleteFail": "Failed to delete history"
+    "historyDeleteFail": "Failed to delete history",
+    "voiceprintReady": "Voice locked — other voices won't interrupt the teacher anymore",
+    "voiceprintFailed": "Voice lock failed, still works for now — try recording again later"
   },
   "error": {
     "cameraApiNotSupported": "Camera API is not supported on this device",
@@ -140,6 +142,13 @@
     "classroomStatus": "Classroom status",
     "switchTeacher": "Switch teacher",
     "preferences": "Preferences",
+    "voiceLock": "Voice lock",
+    "voiceLockHelp": "Record a short sample of your child's voice so the teacher locks onto it and isn't as easily thrown off by other people talking nearby.",
+    "voiceLockRecord": "Record your child's voice",
+    "voiceLockReRecord": "Locked · Record again",
+    "voiceLockRecording": "Recording… {{elapsed}}/{{total}}s",
+    "voiceLockUploading": "Uploading…",
+    "voiceLockError": "Recording or upload failed — check microphone permission and try again.",
     "openSettings": "Open classroom settings",
     "closeSettings": "Close classroom settings",
     "settingsTitle": "Classroom settings",

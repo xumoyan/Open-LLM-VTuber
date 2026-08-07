@@ -102,7 +102,9 @@
     "newConversation": "新对话已开始",
     "newChatHistory": "新聊天历史已创建",
     "historyDeleteSuccess": "历史记录删除成功",
-    "historyDeleteFail": "删除历史记录失败"
+    "historyDeleteFail": "删除历史记录失败",
+    "voiceprintReady": "声音已锁定，其他人说话不会再打断老师",
+    "voiceprintFailed": "声音锁定失败，先继续用，稍后可以重新录制"
   },
   "error": {
     "cameraApiNotSupported": "此设备不支持摄像头API",
@@ -137,6 +139,13 @@
     "classroomStatus": "课堂状态",
     "switchTeacher": "切换老师",
     "preferences": "偏好设置",
+    "voiceLock": "声音锁定",
+    "voiceLockHelp": "录一段孩子的声音，老师会认准这个声音，旁边有人说话也不容易被打扰。",
+    "voiceLockRecord": "录制孩子的声音",
+    "voiceLockReRecord": "已锁定 · 重新录制",
+    "voiceLockRecording": "录音中… {{elapsed}}/{{total}} 秒",
+    "voiceLockUploading": "上传中…",
+    "voiceLockError": "录制或上传失败，检查麦克风权限后重试。",
     "openSettings": "打开课堂设置",
     "closeSettings": "关闭课堂设置",
     "settingsTitle": "课堂设置",

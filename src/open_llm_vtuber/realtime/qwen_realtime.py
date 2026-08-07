@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from loguru import logger
+from openai import AsyncOpenAI
 from websockets.asyncio.client import connect
 
 from ..config_manager.character import RealtimeVoiceConfig, TeachingSessionConfig
@@ -18,6 +19,9 @@ INPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_RATE = 24000
 MAX_PENDING_AUDIO_CHUNKS = 30
 RESPONSE_START_WATCHDOG_SECONDS = 12
+TURN_STALL_WATCHDOG_SECONDS = 20
+TRANSLATE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+TRANSLATE_MODEL = "qwen-mt-turbo"
 
 
 class QwenRealtimeError(RuntimeError):
@@ -65,9 +69,11 @@ class QwenRealtimeSession:
         instructions: str,
         send_event: EventSender,
         websocket_connect: Callable[..., Any] = connect,
+        voiceprint_url: str | None = None,
     ) -> None:
         self.config = config
         self.instructions = instructions
+        self.voiceprint_url = voiceprint_url
         self._send_event = send_event
         self._websocket_connect = websocket_connect
         self._upstream: Any = None
@@ -85,6 +91,9 @@ class QwenRealtimeSession:
         self._response_contexts: dict[str, tuple[str, int]] = {}
         self._cancelled_response_ids: deque[str] = deque(maxlen=32)
         self._expected_turn_id = ""
+        self._translate_client: AsyncOpenAI | None = None
+        self._background_tasks: set[asyncio.Task] = set()
+        self._stall_watchdog_task: asyncio.Task | None = None
 
     @property
     def ready(self) -> bool:
@@ -183,10 +192,63 @@ class QwenRealtimeSession:
             return
         self._closed = True
         self._ready.clear()
-        for task in (self._watchdog_task, self._reconnect_task, self._receive_task):
+        for task in (
+            self._watchdog_task,
+            self._stall_watchdog_task,
+            self._reconnect_task,
+            self._receive_task,
+        ):
             if task and task is not asyncio.current_task() and not task.done():
                 task.cancel()
+        for task in list(self._background_tasks):
+            if task is not asyncio.current_task() and not task.done():
+                task.cancel()
         await self._close_upstream()
+
+    def _spawn_translation(self, role: str, content: str, turn_id: str) -> None:
+        """Fire-and-forget: translate a finalized transcript for on-screen display only."""
+        task = asyncio.create_task(self._translate_and_emit(role, content, turn_id))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _translate_and_emit(self, role: str, content: str, turn_id: str) -> None:
+        try:
+            translated = await self._translate(content)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.debug(
+                "Realtime transcript translation skipped: {}", type(error).__name__
+            )
+            return
+        if not translated:
+            return
+        await self._emit(
+            {
+                "type": "transcript.translation",
+                "role": role,
+                "content": translated,
+                "turnId": turn_id,
+            }
+        )
+
+    async def _translate(self, text: str) -> str:
+        """Best-effort Chinese gloss of a transcript line; never blocks the conversation."""
+        api_key = os.getenv("DASHSCOPE_API_KEY")
+        if not api_key or not text.strip():
+            return ""
+        if self._translate_client is None:
+            self._translate_client = AsyncOpenAI(
+                api_key=api_key, base_url=TRANSLATE_BASE_URL
+            )
+        completion = await self._translate_client.chat.completions.create(
+            model=TRANSLATE_MODEL,
+            messages=[{"role": "user", "content": text}],
+            extra_body={
+                "translation_options": {"source_lang": "auto", "target_lang": "Chinese"}
+            },
+        )
+        return (completion.choices[0].message.content or "").strip()
 
     async def _close_upstream(self) -> None:
         upstream, self._upstream = self._upstream, None
@@ -300,14 +362,16 @@ class QwenRealtimeSession:
         if event_type == "conversation.item.input_audio_transcription.completed":
             content = str(event.get("transcript") or "").strip()
             if content:
+                turn_id = self._turn_for(event)[0]
                 await self._emit(
                     {
                         "type": "transcript.final",
                         "role": "user",
                         "content": content,
-                        "turnId": self._turn_for(event)[0],
+                        "turnId": turn_id,
                     }
                 )
+                self._spawn_translation("user", content, turn_id)
             else:
                 await self._emit(
                     {
@@ -350,6 +414,19 @@ class QwenRealtimeSession:
         if event_type == "response.done":
             await self._on_response_done(event)
             return
+        if event_type in {
+            "voiceprint_audio_list.in_progress",
+            "voiceprint_audio_list.completed",
+            "voiceprint_audio_list.failed",
+        }:
+            await self._emit(
+                {
+                    "type": "voiceprint.status",
+                    "state": event_type.rsplit(".", 1)[-1],
+                    "reason": event.get("reason", ""),
+                }
+            )
+            return
         if event_type == "error":
             await self._on_upstream_error(event)
 
@@ -360,6 +437,11 @@ class QwenRealtimeSession:
                 threshold=self.config.turn_detection_threshold,
                 silence_duration_ms=self.config.turn_detection_silence_ms,
             )
+        elif self.config.turn_detection == "smart_turn" and self.voiceprint_url:
+            # Lock onto one speaker so background chatter / a second speaker
+            # doesn't confuse turn detection. Only takes effect on the first
+            # session.update of this connection; Qwen registers it async.
+            turn_detection["voiceprint_audio_urls"] = [self.voiceprint_url]
         await self._send_upstream(
             "session.update",
             session={
@@ -380,14 +462,48 @@ class QwenRealtimeSession:
             self._turn_by_item[item_id] = (self._turn_id, self._turn_generation)
         self._cancel_watchdog()
         await self.cancel("user_interruption")
+        self._start_stall_watchdog(self._turn_generation, self._turn_id)
         await self._emit({"type": "turn.started", "turnId": self._turn_id})
         await self._emit(
             {"type": "voice.state", "state": "listening", "turnId": self._turn_id}
         )
 
+    def _start_stall_watchdog(self, generation: int, turn_id: str) -> None:
+        """Guard against overlapping/background speakers confusing turn detection
+        so badly that neither speech_stopped nor a response ever arrives, which
+        would otherwise leave the client stuck in "listening" forever."""
+        if self._stall_watchdog_task and not self._stall_watchdog_task.done():
+            self._stall_watchdog_task.cancel()
+        self._stall_watchdog_task = asyncio.create_task(
+            self._watch_stall(generation, turn_id)
+        )
+
+    async def _watch_stall(self, generation: int, turn_id: str) -> None:
+        try:
+            await asyncio.sleep(TURN_STALL_WATCHDOG_SECONDS)
+            if self._turn_generation != generation:
+                return  # a newer turn already superseded this one
+            await self._emit(
+                {
+                    "type": "error",
+                    "code": "qwen_turn_stalled",
+                    "message": "听了一会儿没反应过来，麦克风重新开始听吧。",
+                    "recoverable": True,
+                }
+            )
+            await self._emit({"type": "voice.state", "state": "idle", "turnId": turn_id})
+        except asyncio.CancelledError:
+            pass
+
+    def _cancel_stall_watchdog(self) -> None:
+        if self._stall_watchdog_task and not self._stall_watchdog_task.done():
+            self._stall_watchdog_task.cancel()
+        self._stall_watchdog_task = None
+
     async def _on_speech_stopped(self, event: dict[str, Any]) -> None:
         turn_id, _ = self._turn_for(event)
         if event.get("reason") == "turn_invalid":
+            self._cancel_stall_watchdog()
             await self._emit(
                 {
                     "type": "transcript.discard",
@@ -412,6 +528,7 @@ class QwenRealtimeSession:
         if response_id:
             self._response_contexts[response_id] = context
         self._cancel_watchdog()
+        self._cancel_stall_watchdog()
         self._expected_turn_id = ""
         await self._emit(
             {
@@ -461,6 +578,8 @@ class QwenRealtimeSession:
                 **({"replace": True} if not final else {}),
             }
         )
+        if final:
+            self._spawn_translation("assistant", content, turn_id)
 
     async def _on_response_done(self, event: dict[str, Any]) -> None:
         response_id = self._response_id(event)

@@ -56,6 +56,10 @@ class ServiceContext:
         self.vad_engine: VADInterface | None = None
         self.translate_engine: TranslateInterface | None = None
         self.realtime_session: QwenRealtimeSession | None = None
+        # Public URL of a short voice sample, set by the client before "connect",
+        # so Qwen's smart_turn mode can lock onto that speaker (see
+        # routes.init_voiceprint_routes and QwenRealtimeSession.voiceprint_url).
+        self.voiceprint_url: str | None = None
 
         self.mcp_server_registery: ServerRegistry | None = None
         self.tool_adapter: ToolAdapter | None = None
@@ -371,6 +375,7 @@ class ServiceContext:
             config=self.character_config.realtime_voice,
             instructions=self.system_prompt,
             send_event=send_event,
+            voiceprint_url=self.voiceprint_url,
         )
         await self.realtime_session.connect()
 

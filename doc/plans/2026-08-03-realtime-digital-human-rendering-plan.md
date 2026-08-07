@@ -94,16 +94,16 @@ Fay 是面向 2.5D、3D、移动端、PC、网页和业务系统的完整 Agent/
 
 ## 2. 候选技术结论
 
-| 候选 | 实际层级 | 实时与硬件 | 与当前项目匹配度 | 本计划决策 |
-| --- | --- | --- | --- | --- |
-| 现有 Live2D | 前端参数动画 | 真机本地，额外延迟接近零 | 已接好 Qwen PCM、打断和生命周期 | 保留默认与回退 |
-| DH_live mini | Web/WebView 本地 2.5D 渲染 | 官方目标是无 GPU、Web 本地 | 接入面最小，但要验证 PCM 分片、真机与授权 | 第一实验候选 |
-| FeatherTalk | 可训练的轻量音频驱动模型 | 移动友好 ONNX；仍偏研究，需要为人物训练 | 自主可控，但训练和端侧运行时工作量较大 | 第二实验候选 |
-| OpenTalking | 完整产品编排层 + THG 后端 | 本地/远端 GPU、WebRTC | 大量重复现有 UI、Qwen、角色和会话 | 不替换；GPU 阶段参考 |
-| Fay | 完整 Agent/数字人业务框架 | 依具体数字人后端而定 | 不是渲染器 SDK，重复现有系统 | 不接入 |
-| LiveTalking | 完整实时数字人/WebRTC 框架 | Wav2Lip/MuseTalk 通常需 NVIDIA GPU | 有成熟实时视频经验，但部署和网络更重 | GPU 阶段对照组 |
-| MuseTalk | THG 模型引擎 | 高质量，实时通常依赖较强 GPU 和外部流式封装 | 当前 CPU 服务和手机端不适合 | 暂不接 |
-| LivePortrait | 图像/视频驱动肖像动画 | 不是独立的流式音频口型入口 | 仍需音频驱动和实时服务胶水 | 暂不接 |
+| 候选         | 实际层级                   | 实时与硬件                                  | 与当前项目匹配度                          | 本计划决策           |
+| ------------ | -------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
+| 现有 Live2D  | 前端参数动画               | 真机本地，额外延迟接近零                    | 已接好 Qwen PCM、打断和生命周期           | 保留默认与回退       |
+| DH_live mini | Web/WebView 本地 2.5D 渲染 | 官方目标是无 GPU、Web 本地                  | 接入面最小，但要验证 PCM 分片、真机与授权 | 第一实验候选         |
+| FeatherTalk  | 可训练的轻量音频驱动模型   | 移动友好 ONNX；仍偏研究，需要为人物训练     | 自主可控，但训练和端侧运行时工作量较大    | 第二实验候选         |
+| OpenTalking  | 完整产品编排层 + THG 后端  | 本地/远端 GPU、WebRTC                       | 大量重复现有 UI、Qwen、角色和会话         | 不替换；GPU 阶段参考 |
+| Fay          | 完整 Agent/数字人业务框架  | 依具体数字人后端而定                        | 不是渲染器 SDK，重复现有系统              | 不接入               |
+| LiveTalking  | 完整实时数字人/WebRTC 框架 | Wav2Lip/MuseTalk 通常需 NVIDIA GPU          | 有成熟实时视频经验，但部署和网络更重      | GPU 阶段对照组       |
+| MuseTalk     | THG 模型引擎               | 高质量，实时通常依赖较强 GPU 和外部流式封装 | 当前 CPU 服务和手机端不适合               | 暂不接               |
+| LivePortrait | 图像/视频驱动肖像动画      | 不是独立的流式音频口型入口                  | 仍需音频驱动和实时服务胶水                | 暂不接               |
 
 ### 2.1 DH_live 为什么只做“受控实验”
 
@@ -161,7 +161,7 @@ Qwen audio.delta 24k PCM │ 现有 AudioManager            │
 
 ```yaml
 avatar_renderer:
-  mode: live2d       # live2d | dh_live
+  mode: live2d # live2d | dh_live
   asset_id: sunny_teacher_v1
 ```
 
@@ -282,16 +282,16 @@ frontend/src/renderer/public/digital-human/runtime/dh-live/
 
 #### 状态规则
 
-| 事件 | 数字人动作 |
-| --- | --- |
-| `response.started` | 建立新 `responseId` 代次，清除不属于它的积压 |
-| `audio.delta` | AudioManager 排程声音后，旁路同一 PCM 给当前代次 |
-| `audio.done` | 标记输入结束；等待本地视觉缓存消费完 |
-| `playback.clear` / `response.interrupted` | 立即清 PCM/WAV/帧缓存并回 idle |
-| 角色切换 | 销毁旧 WASM/视频/WebGL 资源，再加载新角色；加载期间显示 Live2D |
-| WebSocket 重连 | 不复用旧 `responseId`；数字人保持 idle |
-| App 进入后台 | 停渲染循环和 idle video，清回答缓存 |
-| App 回到前台 | 恢复 WebGL 后再接受新 PCM；失败则 Live2D 回退 |
+| 事件                                      | 数字人动作                                                     |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `response.started`                        | 建立新 `responseId` 代次，清除不属于它的积压                   |
+| `audio.delta`                             | AudioManager 排程声音后，旁路同一 PCM 给当前代次               |
+| `audio.done`                              | 标记输入结束；等待本地视觉缓存消费完                           |
+| `playback.clear` / `response.interrupted` | 立即清 PCM/WAV/帧缓存并回 idle                                 |
+| 角色切换                                  | 销毁旧 WASM/视频/WebGL 资源，再加载新角色；加载期间显示 Live2D |
+| WebSocket 重连                            | 不复用旧 `responseId`；数字人保持 idle                         |
+| App 进入后台                              | 停渲染循环和 idle video，清回答缓存                            |
+| App 回到前台                              | 恢复 WebGL 后再接受新 PCM；失败则 Live2D 回退                  |
 
 #### 错误回退
 
@@ -330,14 +330,14 @@ frontend/src/renderer/public/digital-human/runtime/dh-live/
 
 #### 指标
 
-| 指标 | 目标 |
-| --- | --- |
-| Qwen 音频首包附加延迟 | P95 ≤ 50 ms |
-| 口型相对实际播放声音 | P95 ≤ 250 ms |
-| 打断到嘴停 | P95 ≤ 150 ms |
-| 稳态帧率 | 约 24–25 fps，不持续低于 18 fps |
-| 后台/前台循环 | 10 次后可继续对话，无重复声音 |
-| 30 分钟资源表现 | 无持续增长、崩溃、黑屏或 WebGL context leak |
+| 指标                  | 目标                                        |
+| --------------------- | ------------------------------------------- |
+| Qwen 音频首包附加延迟 | P95 ≤ 50 ms                                 |
+| 口型相对实际播放声音  | P95 ≤ 250 ms                                |
+| 打断到嘴停            | P95 ≤ 150 ms                                |
+| 稳态帧率              | 约 24–25 fps，不持续低于 18 fps             |
+| 后台/前台循环         | 10 次后可继续对话，无重复声音               |
+| 30 分钟资源表现       | 无持续增长、崩溃、黑屏或 WebGL context leak |
 
 灰度先只对 Sunny 角色和内部测试开启；其他角色继续 Live2D。达到指标后再考虑作为默认形象。
 

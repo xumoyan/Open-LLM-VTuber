@@ -16,6 +16,7 @@ interface ChatHistoryState {
   appendHumanMessage: (content: string) => void;
   appendAIMessage: (content: string, name?: string, avatar?: string) => void;
   appendOrUpdateToolCallMessage: (toolMessageData: Partial<Message>) => void; // Accept partial data
+  setLastMessageTranslation: (role: 'human' | 'ai', translation: string) => void;
   setMessages: (messages: Message[]) => void; // Use the unified Message type
   setHistoryList: (
     value: HistoryInfo[] | ((prev: HistoryInfo[]) => HistoryInfo[])
@@ -158,6 +159,23 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
   }, []);
 
   /**
+   * Attach a translation to the most recent message from a role, once it arrives
+   * slightly after that message's own transcript.
+   */
+  const setLastMessageTranslation = useCallback((role: 'human' | 'ai', translation: string) => {
+    setMessages((prevMessages) => {
+      for (let i = prevMessages.length - 1; i >= 0; i -= 1) {
+        if (prevMessages[i].role === role && prevMessages[i].type === 'text') {
+          const updated = [...prevMessages];
+          updated[i] = { ...updated[i], translation };
+          return updated;
+        }
+      }
+      return prevMessages;
+    });
+  }, []);
+
+  /**
    * Update the history list with the latest message
    * @param uid - History unique identifier
    * @param latestMessage - Latest message to update with
@@ -208,6 +226,7 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
       appendHumanMessage,
       appendAIMessage,
       appendOrUpdateToolCallMessage, // Add to context value
+      setLastMessageTranslation,
       setMessages,
       setHistoryList,
       setCurrentHistoryUid,
@@ -225,6 +244,7 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
       appendHumanMessage,
       appendAIMessage,
       appendOrUpdateToolCallMessage, // Add dependency
+      setLastMessageTranslation,
       updateHistoryList,
       fullResponse,
       appendResponse,

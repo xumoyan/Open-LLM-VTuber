@@ -70,6 +70,7 @@ class WSMessage(TypedDict, total=False):
     history_uid: Optional[str]
     file: Optional[str]
     display_text: Optional[dict]
+    voiceprintUrl: Optional[str]
 
 
 class WebSocketHandler:
@@ -674,6 +675,9 @@ class WebSocketHandler:
     ) -> None:
         """Connect only the Qwen session for a realtime-enabled character."""
         context = self.client_contexts[client_uid]
+        voiceprint_url = data.get("voiceprintUrl")
+        if isinstance(voiceprint_url, str) and voiceprint_url:
+            context.voiceprint_url = voiceprint_url
         if context.is_realtime and not context.realtime_session:
             await self._start_realtime_session(client_uid)
 

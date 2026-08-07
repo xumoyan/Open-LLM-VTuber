@@ -1,5 +1,8 @@
+import asyncio
 import json
+import os
 import unittest
+from unittest import mock
 
 from src.open_llm_vtuber.config_manager.character import (
     RealtimeVoiceConfig,
@@ -122,6 +125,118 @@ class QwenRealtimeSessionTest(unittest.IsolatedAsyncioTestCase):
                 "threshold": 0.25,
                 "silence_duration_ms": 450,
             },
+        )
+
+    async def test_voiceprint_url_is_sent_on_first_session_update_in_smart_turn(self):
+        self.session.voiceprint_url = "https://example.com/voiceprints/device-1.wav"
+
+        await self.session._send_session_update()
+
+        self.assertEqual(
+            self.upstream.sent[-1]["session"]["turn_detection"],
+            {
+                "type": "smart_turn",
+                "voiceprint_audio_urls": ["https://example.com/voiceprints/device-1.wav"],
+            },
+        )
+
+    async def test_no_voiceprint_field_when_url_not_set(self):
+        await self.session._send_session_update()
+
+        self.assertNotIn(
+            "voiceprint_audio_urls", self.upstream.sent[-1]["session"]["turn_detection"]
+        )
+
+    async def test_voiceprint_registration_events_forwarded_to_client(self):
+        await self.session._handle_upstream_event(
+            {"type": "voiceprint_audio_list.failed", "reason": "url_unreachable"}
+        )
+
+        self.assertIn(
+            {"type": "voiceprint.status", "state": "failed", "reason": "url_unreachable"},
+            self.events,
+        )
+
+    async def test_final_transcripts_are_translated_for_display(self):
+        async def fake_translate(text):
+            return f"[zh] {text}"
+
+        self.session._translate = fake_translate
+
+        await self.session._handle_upstream_event(
+            {"type": "input_audio_buffer.speech_started", "item_id": "item-user"}
+        )
+        await self.session._handle_upstream_event(
+            {
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item-user",
+                "transcript": "I like cats",
+            }
+        )
+        await self.session._handle_upstream_event(
+            {"type": "response.created", "response": {"id": "response-1"}}
+        )
+        await self.session._handle_upstream_event(
+            {
+                "type": "response.audio_transcript.done",
+                "response_id": "response-1",
+                "transcript": "Cats say meow!",
+            }
+        )
+        await asyncio.gather(*self.session._background_tasks)
+
+        translations = [e for e in self.events if e["type"] == "transcript.translation"]
+        self.assertEqual(
+            {(t["role"], t["content"]) for t in translations},
+            {
+                ("user", "[zh] I like cats"),
+                ("assistant", "[zh] Cats say meow!"),
+            },
+        )
+
+    async def test_translation_is_skipped_without_api_key(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = await self.session._translate("hello")
+        self.assertEqual(result, "")
+
+    async def test_stalled_turn_recovers_when_no_response_ever_starts(self):
+        with mock.patch(
+            "src.open_llm_vtuber.realtime.qwen_realtime.TURN_STALL_WATCHDOG_SECONDS",
+            0.01,
+        ):
+            await self.session._handle_upstream_event(
+                {"type": "input_audio_buffer.speech_started", "item_id": "item-a"}
+            )
+            await self.session._stall_watchdog_task
+
+        self.assertIn(
+            {
+                "type": "error",
+                "code": "qwen_turn_stalled",
+                "message": "听了一会儿没反应过来，麦克风重新开始听吧。",
+                "recoverable": True,
+            },
+            self.events,
+        )
+
+    async def test_stall_watchdog_is_cancelled_once_a_response_starts(self):
+        with mock.patch(
+            "src.open_llm_vtuber.realtime.qwen_realtime.TURN_STALL_WATCHDOG_SECONDS",
+            0.05,
+        ):
+            await self.session._handle_upstream_event(
+                {"type": "input_audio_buffer.speech_started", "item_id": "item-a"}
+            )
+            await self.session._handle_upstream_event(
+                {"type": "input_audio_buffer.speech_stopped", "item_id": "item-a"}
+            )
+            await self.session._handle_upstream_event(
+                {"type": "response.created", "response": {"id": "response-1"}}
+            )
+            await asyncio.sleep(0.08)
+
+        self.assertFalse(
+            any(e.get("code") == "qwen_turn_stalled" for e in self.events)
         )
 
     async def test_cancelled_response_never_forwards_late_audio(self):

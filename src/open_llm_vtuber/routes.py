@@ -1,17 +1,21 @@
 import os
 import json
+import re
 import asyncio
 import secrets
 from uuid import uuid4
 import numpy as np
 from datetime import datetime
-from fastapi import APIRouter, WebSocket, UploadFile, File, Response
+from fastapi import APIRouter, WebSocket, UploadFile, File, Request, Response
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 from loguru import logger
 from .service_context import ServiceContext
 from .websocket_handler import WebSocketHandler
 from .proxy_handler import ProxyHandler
+
+VOICEPRINT_DIR = os.path.join("cache", "voiceprints")
+_VOICEPRINT_DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def is_valid_mobile_access_token(payload: object, expected_token: str | None) -> bool:
@@ -101,6 +105,43 @@ def init_proxy_route(server_url: str) -> APIRouter:
         except Exception as e:
             logger.error(f"Error in proxy connection: {e}")
             raise
+
+    return router
+
+
+def init_voiceprint_routes() -> APIRouter:
+    """
+    Upload/serve the short voice sample used to lock Qwen's realtime turn
+    detection onto one speaker (see RealtimeVoiceConfig / smart_turn
+    voiceprint_audio_urls). Registered unconditionally -- including in
+    MOBILE_TEST_MODE, since this is a mobile-first feature -- unlike
+    init_webtool_routes.
+    """
+    router = APIRouter()
+    os.makedirs(VOICEPRINT_DIR, exist_ok=True)
+
+    @router.post("/voiceprint/{device_id}")
+    async def upload_voiceprint(
+        device_id: str, request: Request, file: UploadFile = File(...)
+    ):
+        """Save a 16kHz mono WAV sample and return its public URL."""
+        if not _VOICEPRINT_DEVICE_ID_RE.match(device_id):
+            return JSONResponse({"error": "Invalid device id"}, status_code=400)
+
+        contents = await file.read()
+        if len(contents) < 44 or len(contents) > 10 * 1024 * 1024:
+            return JSONResponse(
+                {"error": "Voice sample must be a WAV file under 10MB"},
+                status_code=400,
+            )
+
+        dest_path = os.path.join(VOICEPRINT_DIR, f"{device_id}.wav")
+        with open(dest_path, "wb") as dest_file:
+            dest_file.write(contents)
+
+        url = f"{str(request.base_url).rstrip('/')}/voiceprints/{device_id}.wav"
+        logger.info("Saved voiceprint sample for device {}", device_id)
+        return {"url": url}
 
     return router
 

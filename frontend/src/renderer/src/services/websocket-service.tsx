@@ -32,6 +32,7 @@ export interface AudioPayload {
 export interface Message {
   id: string;
   content?: string;
+  translation?: string;
   role: "ai" | "human";
   timestamp: string;
   name?: string;
@@ -65,7 +66,7 @@ export interface MessageEvent {
   actions?: Actions;
   text?: string;
   role?: 'user' | 'assistant';
-  state?: 'idle' | 'listening' | 'thinking' | 'speaking';
+  state?: 'idle' | 'listening' | 'thinking' | 'speaking' | 'in_progress' | 'completed' | 'failed';
   reason?: string;
   code?: string;
   recoverable?: boolean;
